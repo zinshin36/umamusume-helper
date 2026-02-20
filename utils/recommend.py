@@ -1,5 +1,3 @@
-import logging
-
 # Blacklist for cards
 blacklist = set()
 
