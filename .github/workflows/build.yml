@@ -25,6 +25,10 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
 
+    - name: Verify PySimpleGUI
+      run: |
+        python check_env.py
+
     - name: Build executable with PyInstaller
       run: |
         pyinstaller --onefile --windowed main.py
