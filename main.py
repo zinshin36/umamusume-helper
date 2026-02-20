@@ -36,19 +36,18 @@ def fetch_initial_data():
 
 
 # ----------------------------
-# GUI (PySimpleGUI 5)
+# GUI (PySimpleGUI 5 Safe Version)
 # ----------------------------
-sg.theme("DarkBlue3")
 
 layout = [
-    [sg.Text(text="Horse/Card Data Viewer", font=("Arial", 14))],
+    [sg.Text("Horse/Card Data Viewer", font=("Arial", 14))],
     [
-        sg.Button(button_text="Load Data", key="LOAD"),
-        sg.Button(button_text="Exit", key="EXIT")
+        sg.Button("Load Data", key="LOAD"),
+        sg.Button("Exit", key="EXIT")
     ],
     [
         sg.Multiline(
-            default_text="",
+            "",
             size=(80, 20),
             key="OUTPUT",
             expand_x=True,
@@ -58,9 +57,10 @@ layout = [
 ]
 
 window = sg.Window(
-    title="My Application",
-    layout=layout,
-    resizable=True
+    "My Application",
+    layout,
+    resizable=True,
+    finalize=True
 )
 
 
