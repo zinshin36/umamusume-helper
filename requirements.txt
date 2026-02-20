@@ -1,4 +1,4 @@
 requests
-PySimpleGUI==4.60.4
+PySimpleGUI==5.0.8.3
 pandas
 pyinstaller
