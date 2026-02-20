@@ -1,142 +1,71 @@
 import sys
-exit = sys.exit  # REQUIRED for PySimpleGUI 5.x + PyInstaller
-
-import os
 import logging
+import requests
+import pandas as pd
 import PySimpleGUI as sg
-from utils import fetch, recommend
 
-# ---- LOGGING ----
-if not os.path.exists("logs"):
-    os.makedirs("logs")
 
+# ----------------------------
+# Logging Setup
+# ----------------------------
 logging.basicConfig(
-    filename="logs/log.txt",
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
 logging.info("Application started")
 
-# ---- FETCH INITIAL DATA ----
-horses_data = fetch.fetch_horses()
-cards_data = fetch.fetch_cards()
-logging.info("Fetched initial horse/card data successfully")
 
-# Base horse names (without versions)
-base_horse_names = sorted(
-    list({h["name"].split("[")[0].strip() for h in horses_data})
-)
+# ----------------------------
+# Example Data Fetch Function
+# ----------------------------
+def fetch_initial_data():
+    try:
+        # Replace with your actual API or data source
+        response = requests.get("https://jsonplaceholder.typicode.com/posts")
+        response.raise_for_status()
+        data = response.json()
 
-# ---- GUI LAYOUT ----
+        df = pd.DataFrame(data)
+        logging.info("Fetched initial data successfully")
+
+        return df
+
+    except Exception as e:
+        logging.error(f"Error fetching data: {e}")
+        return None
+
+
+# ----------------------------
+# GUI Layout (PySimpleGUI 4.60.4 Compatible)
+# ----------------------------
 layout = [
-    [sg.Button("Update Horses & Cards")],
-    [sg.Text("Select Horse:")],
-    [
-        sg.Combo(
-            values=base_horse_names,
-            key="-HORSEBASE-",
-            enable_events=True,
-            size=(50, 1),
-        )
-    ],
-    [sg.Text("Select Version:")],
-    [
-        sg.Combo(
-            values=[],
-            key="-HORSEVERSION-",
-            enable_events=True,
-            size=(50, 1),
-        )
-    ],
-    [sg.Text("Recommended Races:"), sg.Text("", key="-RACES-")],
-    [sg.Text("Recommended Support Deck (Top 6):")],
-    [sg.Listbox(values=[], size=(50, 10), key="-DECK-")],
-    [
-        sg.Text("Blacklist Card:"),
-        sg.Input(key="-BLACK-"),
-        sg.Button("Add to Blacklist"),
-    ],
+    [sg.Text("Horse/Card Data Viewer", font=("Arial", 14))],
+    [sg.Button("Load Data"), sg.Button("Exit")],
+    [sg.Multiline(size=(80, 20), key="OUTPUT")]
 ]
 
-window = sg.Window("Uma Musume Helper", layout)
-selected_horse = None
+window = sg.Window("My Application", layout)
 
+
+# ----------------------------
+# Main Event Loop
+# ----------------------------
 while True:
     event, values = window.read()
 
-    if event == sg.WINDOW_CLOSED:
-        logging.info("Application closed by user")
+    if event == sg.WIN_CLOSED or event == "Exit":
         break
 
-    elif event == "Update Horses & Cards":
-        try:
-            horses_data = fetch.fetch_horses()
-            cards_data = fetch.fetch_cards()
-            base_horse_names = sorted(
-                list({h["name"].split("[")[0].strip() for h in horses_data})
-            )
-            window["-HORSEBASE-"].update(values=base_horse_names)
-            sg.popup("Horses and Cards Updated!", modal=True)
-            logging.info("Horses and cards updated successfully")
-        except Exception as e:
-            logging.exception(f"Error updating data: {e}")
+    if event == "Load Data":
+        df = fetch_initial_data()
 
-    elif event == "-HORSEBASE-":
-        base_name = values["-HORSEBASE-"]
-        versions = [h["name"] for h in horses_data if h["name"].startswith(base_name)]
+        if df is not None:
+            window["OUTPUT"].update(df.head().to_string())
+        else:
+            window["OUTPUT"].update("Failed to fetch data. Check logs.")
 
-        window["-HORSEVERSION-"].update(
-            values=versions, value=versions[0] if versions else ""
-        )
-
-        if versions:
-            selected_horse = recommend.find_horse(versions[0], horses_data)[0]
-            window["-RACES-"].update(
-                ", ".join(recommend.recommend_races(selected_horse))
-            )
-            deck = recommend.build_deck(selected_horse, cards_data)
-            deck_display = [
-                f"{c['name']} ({c['type']}, {c.get('rarity', 'N/A')})"
-                for c in deck
-            ]
-            window["-DECK-"].update(deck_display)
-            logging.info(
-                f"Selected horse: {selected_horse['name']}, deck: {deck_display}"
-            )
-
-    elif event == "-HORSEVERSION-":
-        version_name = values["-HORSEVERSION-"]
-        if version_name:
-            matches = recommend.find_horse(version_name, horses_data)
-            if matches:
-                selected_horse = matches[0]
-                window["-RACES-"].update(
-                    ", ".join(recommend.recommend_races(selected_horse))
-                )
-                deck = recommend.build_deck(selected_horse, cards_data)
-                deck_display = [
-                    f"{c['name']} ({c['type']}, {c.get('rarity', 'N/A')})"
-                    for c in deck
-                ]
-                window["-DECK-"].update(deck_display)
-                logging.info(
-                    f"Selected horse version: {selected_horse['name']}, deck: {deck_display}"
-                )
-
-    elif event == "Add to Blacklist":
-        card = values["-BLACK-"]
-        if card:
-            recommend.blacklist.add(card)
-            sg.popup(f"Blacklisted: {card}", modal=True)
-            logging.info(f"Added to blacklist: {card}")
-
-            if selected_horse:
-                deck = recommend.build_deck(selected_horse, cards_data)
-                deck_display = [
-                    f"{c['name']} ({c['type']}, {c.get('rarity', 'N/A')})"
-                    for c in deck
-                ]
-                window["-DECK-"].update(deck_display)
 
 window.close()
+logging.info("Application closed")
+sys.exit(0)
