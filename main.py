@@ -17,11 +17,10 @@ logging.info("Application started")
 
 
 # ----------------------------
-# Example Data Fetch Function
+# Fetch Data
 # ----------------------------
 def fetch_initial_data():
     try:
-        # Replace with your actual API or data source
         response = requests.get("https://jsonplaceholder.typicode.com/posts")
         response.raise_for_status()
         data = response.json()
@@ -37,27 +36,44 @@ def fetch_initial_data():
 
 
 # ----------------------------
-# GUI Layout (PySimpleGUI 4.60.4 Compatible)
+# GUI (PySimpleGUI 5)
 # ----------------------------
+sg.theme("DarkBlue3")
+
 layout = [
-    [sg.Text("Horse/Card Data Viewer", font=("Arial", 14))],
-    [sg.Button("Load Data"), sg.Button("Exit")],
-    [sg.Multiline(size=(80, 20), key="OUTPUT")]
+    [sg.Text(text="Horse/Card Data Viewer", font=("Arial", 14))],
+    [
+        sg.Button(button_text="Load Data", key="LOAD"),
+        sg.Button(button_text="Exit", key="EXIT")
+    ],
+    [
+        sg.Multiline(
+            default_text="",
+            size=(80, 20),
+            key="OUTPUT",
+            expand_x=True,
+            expand_y=True
+        )
+    ]
 ]
 
-window = sg.Window("My Application", layout)
+window = sg.Window(
+    title="My Application",
+    layout=layout,
+    resizable=True
+)
 
 
 # ----------------------------
-# Main Event Loop
+# Event Loop
 # ----------------------------
 while True:
     event, values = window.read()
 
-    if event == sg.WIN_CLOSED or event == "Exit":
+    if event in (sg.WIN_CLOSED, "EXIT"):
         break
 
-    if event == "Load Data":
+    if event == "LOAD":
         df = fetch_initial_data()
 
         if df is not None:
