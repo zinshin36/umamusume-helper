@@ -1,11 +1,8 @@
 import sys
 import os
 import logging
-import requests
-import pandas as pd
-from bs4 import BeautifulSoup
 import PySimpleGUI as sg
-from utils.fetch import fetch_horses, fetch_cards
+from utils.fetch import fetch_data
 
 # ----------------------------
 # Logging Setup
@@ -24,7 +21,7 @@ logging.info("Application started")
 sg.theme("DarkBlue3")
 
 layout = [
-    [sg.Text("Uma Musume Helper", font=("Arial", 16))],
+    [sg.Text("Uma Musume Helper (EN Wiki)", font=("Arial", 16))],
     [sg.Button("Update Horses & Cards", key="UPDATE")],
     [sg.Multiline("", size=(100, 20), key="OUTPUT", expand_x=True, expand_y=True)],
     [sg.Button("Exit", key="EXIT")]
@@ -36,25 +33,6 @@ horses_data = []
 cards_data = []
 
 # ----------------------------
-# Fetch & Filter Data
-# ----------------------------
-def fetch_and_filter():
-    global horses_data, cards_data
-    try:
-        horses = fetch_horses()
-        cards = fetch_cards()
-
-        # Only include "Initially released (EN)"
-        horses_data = [h for h in horses if "Initially released (EN)" in h.get("release", "")]
-        cards_data = [c for c in cards if "Initially released (EN)" in c.get("release", "")]
-
-        logging.info(f"Fetched {len(horses_data)} horses and {len(cards_data)} cards (EN only).")
-        return True
-    except Exception as e:
-        logging.warning(f"API failed, using cache. {e}")
-        return False
-
-# ----------------------------
 # Event Loop
 # ----------------------------
 while True:
@@ -64,10 +42,14 @@ while True:
         break
 
     if event == "UPDATE":
-        success = fetch_and_filter()
-        if success:
-            output = f"Loaded {len(horses_data)} horses and {len(cards_data)} cards.\n"
-            output += "Horses (first 5):\n" + "\n".join([h['name'] for h in horses_data[:5]]) + "\n\n"
+        data = fetch_data()
+        horses_data = data.get("horses", [])
+        cards_data = data.get("cards", [])
+
+        logging.info(f"Loaded {len(horses_data)} horses and {len(cards_data)} cards.")
+
+        if horses_data and cards_data:
+            output = f"Horses (first 5):\n" + "\n".join([h['name'] for h in horses_data[:5]]) + "\n\n"
             output += "Cards (first 5):\n" + "\n".join([c['name'] for c in cards_data[:5]])
             window["OUTPUT"].update(output)
         else:
