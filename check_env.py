@@ -6,7 +6,7 @@ try:
     print("Text:", sg.Text)
     print("Listbox:", sg.Listbox)
     print("Combo:", sg.Combo)
-    print("PySimpleGUI environment is OK ✅")
+    print("PySimpleGUI environment is OK")
 except AttributeError as e:
-    print("PySimpleGUI environment is broken ❌")
+    print("PySimpleGUI environment is broken")
     print(e)
