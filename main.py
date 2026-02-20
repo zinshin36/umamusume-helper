@@ -2,7 +2,8 @@ import sys
 import logging
 import requests
 import pandas as pd
-import PySimpleGUI as sg
+import tkinter as tk
+from tkinter import scrolledtext
 
 
 # ----------------------------
@@ -36,52 +37,39 @@ def fetch_initial_data():
 
 
 # ----------------------------
-# GUI (PySimpleGUI 5 Safe Version)
+# GUI (tkinter - stable)
 # ----------------------------
+def load_data():
+    df = fetch_initial_data()
 
-layout = [
-    [sg.Text("Horse/Card Data Viewer", font=("Arial", 14))],
-    [
-        sg.Button("Load Data", key="LOAD"),
-        sg.Button("Exit", key="EXIT")
-    ],
-    [
-        sg.Multiline(
-            "",
-            size=(80, 20),
-            key="OUTPUT",
-            expand_x=True,
-            expand_y=True
-        )
-    ]
-]
+    output_text.delete("1.0", tk.END)
 
-window = sg.Window(
-    "My Application",
-    layout,
-    resizable=True,
-    finalize=True
-)
+    if df is not None:
+        output_text.insert(tk.END, df.head().to_string())
+    else:
+        output_text.insert(tk.END, "Failed to fetch data. Check logs.")
 
 
-# ----------------------------
-# Event Loop
-# ----------------------------
-while True:
-    event, values = window.read()
+root = tk.Tk()
+root.title("Uma Musume Helper")
+root.geometry("800x600")
 
-    if event in (sg.WIN_CLOSED, "EXIT"):
-        break
+title_label = tk.Label(root, text="Horse/Card Data Viewer", font=("Arial", 16))
+title_label.pack(pady=10)
 
-    if event == "LOAD":
-        df = fetch_initial_data()
+button_frame = tk.Frame(root)
+button_frame.pack(pady=5)
 
-        if df is not None:
-            window["OUTPUT"].update(df.head().to_string())
-        else:
-            window["OUTPUT"].update("Failed to fetch data. Check logs.")
+load_button = tk.Button(button_frame, text="Load Data", command=load_data)
+load_button.pack(side=tk.LEFT, padx=5)
 
+exit_button = tk.Button(button_frame, text="Exit", command=root.destroy)
+exit_button.pack(side=tk.LEFT, padx=5)
 
-window.close()
+output_text = scrolledtext.ScrolledText(root, width=95, height=25)
+output_text.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
+
+root.mainloop()
+
 logging.info("Application closed")
 sys.exit(0)
