@@ -3,7 +3,7 @@ import logging
 import PySimpleGUI as sg
 from utils import fetch, recommend
 
-# ---- SETUP LOGGING ----
+# ---- LOGGING ----
 if not os.path.exists("logs"):
     os.makedirs("logs")
 
@@ -15,13 +15,14 @@ logging.basicConfig(
 
 logging.info("Application started")
 
-# ---- FETCH DATA ----
+# ---- FETCH INITIAL DATA ----
 horses_data, cards_data = fetch.fetch_horses(), fetch.fetch_cards()
 logging.info("Fetched initial horse/card data successfully")
 
-# Prepare list of horse names (unique base names) for dropdown
+# Base horse names (without versions)
 base_horse_names = sorted(list({h['name'].split('[')[0].strip() for h in horses_data}))
 
+# ---- GUI LAYOUT ----
 layout = [
     [sg.Button("Update Horses & Cards")],
     [sg.Text("Select Horse:")],
@@ -35,7 +36,6 @@ layout = [
 ]
 
 window = sg.Window("Uma Musume Helper", layout)
-
 selected_horse = None
 
 while True:
@@ -47,7 +47,6 @@ while True:
     elif event == "Update Horses & Cards":
         try:
             horses_data, cards_data = fetch.fetch_horses(), fetch.fetch_cards()
-            # Update base horse list
             base_horse_names = sorted(list({h['name'].split('[')[0].strip() for h in horses_data}))
             window["-HORSEBASE-"].update(values=base_horse_names)
             sg.popup("Horses and Cards Updated!")
@@ -56,7 +55,6 @@ while True:
             logging.exception(f"Error updating data: {e}")
 
     elif event == "-HORSEBASE-":
-        # Populate version dropdown for selected base horse
         base_name = values["-HORSEBASE-"]
         versions = [h['name'] for h in horses_data if h['name'].startswith(base_name)]
         window["-HORSEVERSION-"].update(values=versions, value=versions[0] if versions else "")
