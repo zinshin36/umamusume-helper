@@ -8,8 +8,10 @@ This tool recommends races and builds support decks for any horse on the Global 
 - Recommend races for any horse
 - Build a top 6 support card deck automatically
 - Blacklist cards you don't own or want to avoid
+- Version-aware selection for horses and cards
 - Update button to fetch latest cards/horses
+- Logs all actions in logs/log.txt
 
 ## Requirements
 
-Python 3.10+
+- Python 3.10+ (only required locally for testing)
