@@ -2,7 +2,7 @@ import requests
 from config import HORSES_API, CARDS_API
 
 def fetch_horses():
-    """Fetch all horses from global server"""
+    """Fetch all horse versions from global server"""
     try:
         r = requests.get(HORSES_API)
         r.raise_for_status()
@@ -12,7 +12,7 @@ def fetch_horses():
         return []
 
 def fetch_cards():
-    """Fetch all support cards from global server"""
+    """Fetch all support card versions from global server"""
     try:
         r = requests.get(CARDS_API)
         r.raise_for_status()
