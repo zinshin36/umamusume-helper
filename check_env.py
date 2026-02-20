@@ -1,4 +1,3 @@
-# check_env.py
 import PySimpleGUI as sg
 
 try:
