@@ -19,11 +19,15 @@ logging.info("Application started")
 horses_data, cards_data = fetch.fetch_horses(), fetch.fetch_cards()
 logging.info("Fetched initial horse/card data successfully")
 
-# ---- GUI LAYOUT ----
+# Prepare list of horse names (unique base names) for dropdown
+base_horse_names = sorted(list({h['name'].split('[')[0].strip() for h in horses_data}))
+
 layout = [
     [sg.Button("Update Horses & Cards")],
-    [sg.Text("Select Horse Version:")],
-    [sg.Listbox(values=[h['name'] for h in horses_data], size=(50,10), key="-HORSES-", enable_events=True)],
+    [sg.Text("Select Horse:")],
+    [sg.Combo(values=base_horse_names, key="-HORSEBASE-", enable_events=True, size=(50,1))],
+    [sg.Text("Select Version:")],
+    [sg.Combo(values=[], key="-HORSEVERSION-", enable_events=True, size=(50,1))],
     [sg.Text("Recommended Races:"), sg.Text("", key="-RACES-")],
     [sg.Text("Recommended Support Deck (Top 6):")],
     [sg.Listbox(values=[], size=(50,10), key="-DECK-")],
@@ -43,32 +47,44 @@ while True:
     elif event == "Update Horses & Cards":
         try:
             horses_data, cards_data = fetch.fetch_horses(), fetch.fetch_cards()
-            window["-HORSES-"].update([h['name'] for h in horses_data])
+            # Update base horse list
+            base_horse_names = sorted(list({h['name'].split('[')[0].strip() for h in horses_data}))
+            window["-HORSEBASE-"].update(values=base_horse_names)
             sg.popup("Horses and Cards Updated!")
             logging.info("Horses and cards updated successfully")
         except Exception as e:
             logging.exception(f"Error updating data: {e}")
 
-    elif event == "-HORSES-":
-        # User selected a horse version from list
-        if values["-HORSES-"]:
-            horse_name = values["-HORSES-"][0]
-            matches = recommend.find_horse(horse_name, horses_data)
+    elif event == "-HORSEBASE-":
+        # Populate version dropdown for selected base horse
+        base_name = values["-HORSEBASE-"]
+        versions = [h['name'] for h in horses_data if h['name'].startswith(base_name)]
+        window["-HORSEVERSION-"].update(values=versions, value=versions[0] if versions else "")
+        if versions:
+            selected_horse = recommend.find_horse(versions[0], horses_data)[0]
+            window["-RACES-"].update(", ".join(recommend.recommend_races(selected_horse)))
+            deck = recommend.build_deck(selected_horse, cards_data)
+            deck_display = [f"{c['name']} ({c['type']}, {c.get('rarity','N/A')})" for c in deck]
+            window["-DECK-"].update(deck_display)
+            logging.info(f"Selected horse: {selected_horse['name']}, deck: {deck_display}")
+
+    elif event == "-HORSEVERSION-":
+        if values["-HORSEVERSION-"]:
+            version_name = values["-HORSEVERSION-"]
+            matches = recommend.find_horse(version_name, horses_data)
             if matches:
-                # For now pick the first matching version
                 selected_horse = matches[0]
                 window["-RACES-"].update(", ".join(recommend.recommend_races(selected_horse)))
                 deck = recommend.build_deck(selected_horse, cards_data)
                 deck_display = [f"{c['name']} ({c['type']}, {c.get('rarity','N/A')})" for c in deck]
                 window["-DECK-"].update(deck_display)
-                logging.info(f"Selected horse: {selected_horse['name']}, deck: {deck_display}")
+                logging.info(f"Selected horse version: {selected_horse['name']}, deck: {deck_display}")
 
     elif event == "Add to Blacklist":
         if values["-BLACK-"]:
             recommend.blacklist.add(values["-BLACK-"])
             sg.popup(f"Blacklisted: {values['-BLACK-']}")
             logging.info(f"Added to blacklist: {values['-BLACK-']}")
-            # Refresh deck if a horse is selected
             if selected_horse:
                 deck = recommend.build_deck(selected_horse, cards_data)
                 deck_display = [f"{c['name']} ({c['type']}, {c.get('rarity','N/A')})" for c in deck]
