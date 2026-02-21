@@ -1,19 +1,49 @@
 import os
-import time
 import requests
-from bs4 import BeautifulSoup
+import time
 from utils.merge import slugify
+
+API_URL = "https://umamusume.fandom.com/api.php"
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0"
 }
 
-BASE_CHARACTER_URL = "https://gametora.com/umamusume/characters"
-BASE_SUPPORT_URL = "https://gametora.com/umamusume/supports"
+def get_category(category):
+    members = []
+    params = {
+        "action": "query",
+        "list": "categorymembers",
+        "cmtitle": f"Category:{category}",
+        "cmlimit": 500,
+        "format": "json"
+    }
 
-def safe_get(url):
-    time.sleep(0.4)
-    return requests.get(url, headers=HEADERS, timeout=15)
+    r = requests.get(API_URL, params=params, headers=HEADERS)
+    data = r.json()
+
+    if "query" in data:
+        members = data["query"]["categorymembers"]
+
+    return members
+
+def get_image(title):
+    params = {
+        "action": "query",
+        "prop": "pageimages",
+        "titles": title,
+        "pithumbsize": 400,
+        "format": "json"
+    }
+
+    r = requests.get(API_URL, params=params, headers=HEADERS)
+    pages = r.json().get("query", {}).get("pages", {})
+
+    for page in pages.values():
+        if "thumbnail" in page:
+            return page["thumbnail"]["source"]
+
+    return None
 
 def download_image(url, path):
     try:
@@ -23,24 +53,24 @@ def download_image(url, path):
     except:
         pass
 
-def fetch_characters(progress_callback=None):
+def fetch_all(progress_callback=None):
     characters = []
+    supports = []
+
     os.makedirs("images/characters", exist_ok=True)
+    os.makedirs("images/support_cards", exist_ok=True)
 
-    r = safe_get(BASE_CHARACTER_URL)
-    soup = BeautifulSoup(r.text, "lxml")
+    # ---------- CHARACTERS ----------
+    char_pages = get_category("Playable_Uma_Musume")
+    total = len(char_pages)
 
-    cards = soup.select("a.character-card")
-    total = len(cards)
-
-    for i, card in enumerate(cards):
-        name = card.get("title")
-        img = card.select_one("img")
-        img_url = img["src"] if img else None
-
+    for i, page in enumerate(char_pages):
+        name = page["title"]
         char_id = slugify(name)
 
+        img_url = get_image(name)
         image_path = None
+
         if img_url:
             image_path = f"images/characters/{char_id}.png"
             if not os.path.exists(image_path):
@@ -51,58 +81,45 @@ def fetch_characters(progress_callback=None):
             "name": name,
             "versions": [],
             "images": [image_path] if image_path else [],
-            "sources": ["GameTora"]
+            "sources": ["Fandom"]
         })
 
         if progress_callback:
-            progress_callback(int((i/total)*50))
+            progress_callback(int((i / max(total,1)) * 50))
 
-    return characters
+        time.sleep(0.2)
 
-def fetch_support_cards(progress_callback=None):
-    cards_data = []
-    os.makedirs("images/support_cards", exist_ok=True)
+    # ---------- SUPPORT CARDS ----------
+    support_pages = get_category("Support_Cards")
+    total2 = len(support_pages)
 
-    r = safe_get(BASE_SUPPORT_URL)
-    soup = BeautifulSoup(r.text, "lxml")
+    for i, page in enumerate(support_pages):
+        name = page["title"]
+        card_id = slugify(name)
 
-    cards = soup.select("a.support-card")
-    total = len(cards)
-
-    for i, card in enumerate(cards):
-        name = card.get("title")
-        rarity = "SSR" if "SSR" in name else "SR"
-
-        card_id = slugify(name) + "-" + rarity.lower()
-
-        img = card.select_one("img")
-        img_url = img["src"] if img else None
-
+        img_url = get_image(name)
         image_path = None
+
         if img_url:
             image_path = f"images/support_cards/{card_id}.png"
             if not os.path.exists(image_path):
                 download_image(img_url, image_path)
 
-        cards_data.append({
+        supports.append({
             "id": card_id,
             "name": name,
-            "rarity": rarity,
+            "rarity": "Unknown",
             "type": "Unknown",
             "bonuses": {},
             "skills": [],
             "images": [image_path] if image_path else [],
-            "sources": ["GameTora"]
+            "sources": ["Fandom"]
         })
 
         if progress_callback:
-            progress_callback(50 + int((i/total)*50))
+            progress_callback(50 + int((i / max(total2,1)) * 50))
 
-    return cards_data
-
-def fetch_all(progress_callback=None):
-    characters = fetch_characters(progress_callback)
-    supports = fetch_support_cards(progress_callback)
+        time.sleep(0.2)
 
     if progress_callback:
         progress_callback(100)
