@@ -1,78 +1,90 @@
+import os
 import requests
 from bs4 import BeautifulSoup
-import json
-import os
-from urllib.parse import urljoin
-from config import HORSES_PAGE, CARDS_PAGE, CACHE_FILE
+import logging
 
-BASE_URL = "https://umamusu.wiki"
+BASE_URL = "https://umamusume.fandom.com"
 
-os.makedirs("data/images", exist_ok=True)
+def fetch_data(progress_callback=None):
+    horses = []
+    cards = []
 
-def download_image(image_url, filename):
+    os.makedirs("images/horses", exist_ok=True)
+    os.makedirs("images/cards", exist_ok=True)
+
+    # ---- Fetch Horses Page ----
     try:
-        response = requests.get(image_url, stream=True, timeout=10)
-        if response.status_code == 200:
-            with open(filename, "wb") as f:
-                for chunk in response.iter_content(1024):
-                    f.write(chunk)
-            return filename
-    except:
-        pass
-    return None
+        url = BASE_URL + "/wiki/Category:Playable_Uma_Musume"
+        response = requests.get(url)
+        soup = BeautifulSoup(response.text, "lxml")
 
-def scrape_category(page_url):
-    r = requests.get(page_url, timeout=15)
-    r.raise_for_status()
-    soup = BeautifulSoup(r.text, "lxml")
+        links = soup.select(".category-page__member-link")
+        total = len(links)
 
-    entries = []
+        for i, link in enumerate(links):
+            name = link.text.strip()
+            page_url = BASE_URL + link.get("href")
 
-    for link in soup.select("li.category-page__member > a"):
-        name = link.text.strip()
-        relative_url = link["href"]
-        full_url = urljoin(BASE_URL, relative_url)
+            page = requests.get(page_url)
+            page_soup = BeautifulSoup(page.text, "lxml")
 
-        image_path = scrape_image_from_page(full_url, name)
+            img_tag = page_soup.select_one(".pi-image-thumbnail")
+            if img_tag:
+                img_url = img_tag.get("src")
+                img_data = requests.get(img_url).content
 
-        entries.append({
-            "name": name,
-            "url": full_url,
-            "image": image_path
-        })
+                img_path = f"images/horses/{name}.png"
+                with open(img_path, "wb") as f:
+                    f.write(img_data)
 
-    return entries
+                horses.append({
+                    "name": name,
+                    "image_path": img_path
+                })
 
-def scrape_image_from_page(page_url, name):
-    try:
-        r = requests.get(page_url, timeout=15)
-        r.raise_for_status()
-        soup = BeautifulSoup(r.text, "lxml")
-
-        img = soup.select_one("table.infobox img")
-        if img:
-            img_url = urljoin(BASE_URL, img["src"])
-            safe_name = name.replace("/", "_").replace(" ", "_")
-            local_path = f"data/images/{safe_name}.png"
-            return download_image(img_url, local_path)
-    except:
-        pass
-    return None
-
-def fetch_data():
-    data = {"horses": [], "cards": []}
-
-    try:
-        data["horses"] = scrape_category(HORSES_PAGE)
-        data["cards"] = scrape_category(CARDS_PAGE)
-
-        with open(CACHE_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-
-        return data
+            if progress_callback:
+                progress_callback(int((i / total) * 50))
 
     except Exception as e:
-        if os.path.exists(CACHE_FILE):
-            with open(CACHE_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        return data
+        logging.error(str(e))
+
+    # ---- Fetch Support Cards ----
+    try:
+        url = BASE_URL + "/wiki/Category:Support_Cards"
+        response = requests.get(url)
+        soup = BeautifulSoup(response.text, "lxml")
+
+        links = soup.select(".category-page__member-link")
+        total = len(links)
+
+        for i, link in enumerate(links):
+            name = link.text.strip()
+            page_url = BASE_URL + link.get("href")
+
+            page = requests.get(page_url)
+            page_soup = BeautifulSoup(page.text, "lxml")
+
+            img_tag = page_soup.select_one(".pi-image-thumbnail")
+            if img_tag:
+                img_url = img_tag.get("src")
+                img_data = requests.get(img_url).content
+
+                img_path = f"images/cards/{name}.png"
+                with open(img_path, "wb") as f:
+                    f.write(img_data)
+
+                cards.append({
+                    "name": name,
+                    "image_path": img_path
+                })
+
+            if progress_callback:
+                progress_callback(50 + int((i / total) * 50))
+
+    except Exception as e:
+        logging.error(str(e))
+
+    if progress_callback:
+        progress_callback(100)
+
+    return {"horses": horses, "cards": cards}
