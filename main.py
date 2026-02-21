@@ -5,10 +5,12 @@ import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
 from utils.fetch import fetch_all
-from utils.recommender import recommend_inheritance
+from utils.recommend import recommend_inheritance
 
 DATA_DIR = "data"
+IMAGE_DIR = "images"
 os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(IMAGE_DIR, exist_ok=True)
 
 characters = []
 support_cards = []
@@ -19,6 +21,9 @@ root.geometry("1000x750")
 
 progress = ttk.Progressbar(root, length=500)
 progress.pack(pady=5)
+
+update_button = ttk.Button(root, text="Update Data")
+update_button.pack(pady=5)
 
 notebook = ttk.Notebook(root)
 notebook.pack(fill="both", expand=True)
@@ -47,30 +52,32 @@ def update_data():
 
     characters, support_cards = fetch_all(update_progress)
 
-    with open("data/characters.json", "w") as f:
-        json.dump(characters, f, indent=2)
+    with open(os.path.join(DATA_DIR, "characters.json"), "w", encoding="utf-8") as f:
+        json.dump(characters, f, indent=2, ensure_ascii=False)
 
-    with open("data/support_cards.json", "w") as f:
-        json.dump(support_cards, f, indent=2)
+    with open(os.path.join(DATA_DIR, "support_cards.json"), "w", encoding="utf-8") as f:
+        json.dump(support_cards, f, indent=2, ensure_ascii=False)
 
     char_combo["values"] = [c["name"] for c in characters]
 
 def update_thread():
     threading.Thread(target=update_data, daemon=True).start()
 
-update_button = ttk.Button(root, text="Update Data", command=update_thread)
-update_button.pack(pady=5)
+update_button.config(command=update_thread)
 
 def on_select(event):
     selected = char_combo.get()
     for c in characters:
         if c["name"] == selected:
             if c["images"]:
-                img = Image.open(c["images"][0])
-                img = img.resize((250,250))
-                photo = ImageTk.PhotoImage(img)
-                char_image_label.config(image=photo)
-                char_image_label.image = photo
+                try:
+                    img = Image.open(c["images"][0])
+                    img = img.resize((250, 250))
+                    photo = ImageTk.PhotoImage(img)
+                    char_image_label.config(image=photo)
+                    char_image_label.image = photo
+                except:
+                    pass
 
             rec = recommend_inheritance(c)
             output.delete("1.0", tk.END)
