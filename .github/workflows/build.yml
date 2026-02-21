@@ -28,12 +28,12 @@ jobs:
       run: |
         pyinstaller --onefile --noconsole main.py
 
-    - name: Rename EXE
+    - name: Prepare Release Folder
       run: |
         mkdir release
         copy dist\main.exe release\UmamusumeBuilder.exe
 
-    - name: Upload Artifact
+    - name: Upload Artifact (GitHub auto-zips this)
       uses: actions/upload-artifact@v4
       with:
         name: UmamusumeBuilder
