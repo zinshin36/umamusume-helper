@@ -13,7 +13,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Set up Python 3.10.11
+    - name: Setup Python 3.10.11
       uses: actions/setup-python@v5
       with:
         python-version: 3.10.11
@@ -24,21 +24,17 @@ jobs:
         pip install pyinstaller
         pip install -r requirements.txt
 
-    - name: Build EXE with PyInstaller
+    - name: Build EXE
       run: |
         pyinstaller --onefile --noconsole main.py
 
-    - name: Prepare clean output folder
+    - name: Rename EXE
       run: |
         mkdir release
         copy dist\main.exe release\UmamusumeBuilder.exe
 
-    - name: Create ZIP archive
-      run: |
-        powershell Compress-Archive -Path release\UmamusumeBuilder.exe -DestinationPath Umamusume-Windows-Build.zip
-
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: Umamusume-Windows-Build
-        path: Umamusume-Windows-Build.zip
+        name: UmamusumeBuilder
+        path: release/UmamusumeBuilder.exe
