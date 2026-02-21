@@ -1,104 +1,110 @@
 import os
+import time
 import requests
-import logging
+from bs4 import BeautifulSoup
+from utils.merge import slugify
 
-API_URL = "https://umamusume.fandom.com/api.php"
+HEADERS = {
+    "User-Agent": "Mozilla/5.0"
+}
 
-def get_category_members(category_name):
-    params = {
-        "action": "query",
-        "list": "categorymembers",
-        "cmtitle": f"Category:{category_name}",
-        "cmlimit": "500",
-        "format": "json"
-    }
-    r = requests.get(API_URL, params=params)
-    return r.json().get("query", {}).get("categorymembers", [])
+BASE_CHARACTER_URL = "https://gametora.com/umamusume/characters"
+BASE_SUPPORT_URL = "https://gametora.com/umamusume/supports"
 
-
-def get_page_image(title):
-    params = {
-        "action": "query",
-        "prop": "pageimages",
-        "titles": title,
-        "pithumbsize": 400,
-        "format": "json"
-    }
-    r = requests.get(API_URL, params=params)
-    pages = r.json().get("query", {}).get("pages", {})
-    for page in pages.values():
-        if "thumbnail" in page:
-            return page["thumbnail"]["source"]
-    return None
-
+def safe_get(url):
+    time.sleep(0.4)
+    return requests.get(url, headers=HEADERS, timeout=15)
 
 def download_image(url, path):
     try:
-        r = requests.get(url)
+        r = requests.get(url, headers=HEADERS)
         with open(path, "wb") as f:
             f.write(r.content)
-    except Exception as e:
-        logging.error(str(e))
+    except:
+        pass
 
+def fetch_characters(progress_callback=None):
+    characters = []
+    os.makedirs("images/characters", exist_ok=True)
 
-def fetch_data(progress_callback=None):
-    horses = []
-    cards = []
+    r = safe_get(BASE_CHARACTER_URL)
+    soup = BeautifulSoup(r.text, "lxml")
 
-    os.makedirs("images/horses", exist_ok=True)
-    os.makedirs("images/cards", exist_ok=True)
+    cards = soup.select("a.character-card")
+    total = len(cards)
 
-    try:
-        # ----------------------------
-        # Horses
-        # ----------------------------
-        horse_pages = get_category_members("Playable_Uma_Musume")
-        total = len(horse_pages)
+    for i, card in enumerate(cards):
+        name = card.get("title")
+        img = card.select_one("img")
+        img_url = img["src"] if img else None
 
-        for i, page in enumerate(horse_pages):
-            name = page["title"]
-            image_url = get_page_image(name)
+        char_id = slugify(name)
 
-            image_path = None
-            if image_url:
-                image_path = f"images/horses/{name}.png"
-                download_image(image_url, image_path)
+        image_path = None
+        if img_url:
+            image_path = f"images/characters/{char_id}.png"
+            if not os.path.exists(image_path):
+                download_image(img_url, image_path)
 
-            horses.append({
-                "name": name,
-                "image_path": image_path
-            })
+        characters.append({
+            "id": char_id,
+            "name": name,
+            "versions": [],
+            "images": [image_path] if image_path else [],
+            "sources": ["GameTora"]
+        })
 
-            if progress_callback:
-                progress_callback(int((i / total) * 50))
+        if progress_callback:
+            progress_callback(int((i/total)*50))
 
-        # ----------------------------
-        # Support Cards
-        # ----------------------------
-        card_pages = get_category_members("Support_Cards")
-        total_cards = len(card_pages)
+    return characters
 
-        for i, page in enumerate(card_pages):
-            name = page["title"]
-            image_url = get_page_image(name)
+def fetch_support_cards(progress_callback=None):
+    cards_data = []
+    os.makedirs("images/support_cards", exist_ok=True)
 
-            image_path = None
-            if image_url:
-                image_path = f"images/cards/{name}.png"
-                download_image(image_url, image_path)
+    r = safe_get(BASE_SUPPORT_URL)
+    soup = BeautifulSoup(r.text, "lxml")
 
-            cards.append({
-                "name": name,
-                "image_path": image_path
-            })
+    cards = soup.select("a.support-card")
+    total = len(cards)
 
-            if progress_callback:
-                progress_callback(50 + int((i / total_cards) * 50))
+    for i, card in enumerate(cards):
+        name = card.get("title")
+        rarity = "SSR" if "SSR" in name else "SR"
 
-    except Exception as e:
-        logging.error(str(e))
+        card_id = slugify(name) + "-" + rarity.lower()
+
+        img = card.select_one("img")
+        img_url = img["src"] if img else None
+
+        image_path = None
+        if img_url:
+            image_path = f"images/support_cards/{card_id}.png"
+            if not os.path.exists(image_path):
+                download_image(img_url, image_path)
+
+        cards_data.append({
+            "id": card_id,
+            "name": name,
+            "rarity": rarity,
+            "type": "Unknown",
+            "bonuses": {},
+            "skills": [],
+            "images": [image_path] if image_path else [],
+            "sources": ["GameTora"]
+        })
+
+        if progress_callback:
+            progress_callback(50 + int((i/total)*50))
+
+    return cards_data
+
+def fetch_all(progress_callback=None):
+    characters = fetch_characters(progress_callback)
+    supports = fetch_support_cards(progress_callback)
 
     if progress_callback:
         progress_callback(100)
 
-    return {"horses": horses, "cards": cards}
+    return characters, supports
