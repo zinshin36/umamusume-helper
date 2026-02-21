@@ -1,7 +1,8 @@
 import sys
 import os
 import logging
-import PySimpleGUI as sg
+import tkinter as tk
+from tkinter import ttk, messagebox
 from utils.fetch import fetch_data
 from utils.recommend import recommend_inheritance
 
@@ -17,58 +18,64 @@ logging.basicConfig(
 logging.info("Application started")
 
 # ----------------------------
-# GUI Setup
+# GUI Setup (Tkinter)
 # ----------------------------
-try:
-    sg.theme("DarkBlue3")
-except Exception:
-    pass  # Prevent crash if theme API changes
-
-layout = [
-    [sg.Text("Uma Musume Helper (EN Wiki)", font=("Arial", 16))],
-    [sg.Button("Update Horses & Cards", key="UPDATE")],
-    [sg.Text("Select Horse:")],
-    [sg.Combo([], key="HORSE_SELECT", size=(40, 1))],
-    [sg.Button("Recommend Inheritance", key="INHERIT")],
-    [sg.Multiline("", size=(100, 20), key="OUTPUT", expand_x=True, expand_y=True)],
-    [sg.Button("Exit", key="EXIT")]
-]
-
-window = sg.Window("Uma Musume Helper", layout, resizable=True)
+root = tk.Tk()
+root.title("Uma Musume Helper")
+root.geometry("800x500")
 
 horses_data = []
 cards_data = []
 
-while True:
-    event, values = window.read()
+# Frame
+frame = ttk.Frame(root, padding=10)
+frame.pack(fill="both", expand=True)
 
-    if event in (sg.WIN_CLOSED, "EXIT"):
-        break
+title_label = ttk.Label(frame, text="Uma Musume Helper (EN Wiki)", font=("Arial", 16))
+title_label.pack(pady=10)
 
-    if event == "UPDATE":
-        data = fetch_data()
-        horses_data = data.get("horses", [])
-        cards_data = data.get("cards", [])
+update_button = ttk.Button(frame, text="Update Horses & Cards")
+update_button.pack(pady=5)
 
-        horse_names = [h['name'] for h in horses_data]
-        window["HORSE_SELECT"].update(values=horse_names)
+horse_label = ttk.Label(frame, text="Select Horse:")
+horse_label.pack(pady=5)
 
-        logging.info(f"Loaded {len(horses_data)} horses and {len(cards_data)} cards.")
+horse_combo = ttk.Combobox(frame, state="readonly", width=50)
+horse_combo.pack(pady=5)
 
-        window["OUTPUT"].update(
-            f"Loaded {len(horses_data)} horses and {len(cards_data)} cards.\n"
-            "Select a horse and click Recommend Inheritance."
-        )
+inherit_button = ttk.Button(frame, text="Recommend Inheritance")
+inherit_button.pack(pady=5)
 
-    if event == "INHERIT":
-        selected = values.get("HORSE_SELECT")
-        if not selected:
-            window["OUTPUT"].update("Please select a horse first.")
-            continue
+output_text = tk.Text(frame, wrap="word")
+output_text.pack(fill="both", expand=True, pady=10)
 
-        result = recommend_inheritance(selected, horses_data)
-        window["OUTPUT"].update(result)
+def update_data():
+    global horses_data, cards_data
+    data = fetch_data()
+    horses_data = data.get("horses", [])
+    cards_data = data.get("cards", [])
 
-window.close()
+    horse_names = [h['name'] for h in horses_data]
+    horse_combo["values"] = horse_names
+
+    logging.info(f"Loaded {len(horses_data)} horses and {len(cards_data)} cards.")
+    output_text.delete("1.0", tk.END)
+    output_text.insert(tk.END, f"Loaded {len(horses_data)} horses and {len(cards_data)} cards.\n")
+
+def recommend():
+    selected = horse_combo.get()
+    if not selected:
+        messagebox.showwarning("Warning", "Please select a horse first.")
+        return
+
+    result = recommend_inheritance(selected, horses_data)
+    output_text.delete("1.0", tk.END)
+    output_text.insert(tk.END, result)
+
+update_button.config(command=update_data)
+inherit_button.config(command=recommend)
+
+root.mainloop()
+
 logging.info("Application closed")
 sys.exit(0)
