@@ -3,6 +3,7 @@ import os
 import logging
 import PySimpleGUI as sg
 from utils.fetch import fetch_data
+from utils.recommend import recommend_inheritance
 
 # ----------------------------
 # Logging Setup
@@ -18,11 +19,14 @@ logging.info("Application started")
 # ----------------------------
 # GUI Setup
 # ----------------------------
-sg.theme("DarkBlue3")
+sg.theme("DarkBlue")
 
 layout = [
     [sg.Text("Uma Musume Helper (EN Wiki)", font=("Arial", 16))],
     [sg.Button("Update Horses & Cards", key="UPDATE")],
+    [sg.Text("Select Horse:")],
+    [sg.Combo([], key="HORSE_SELECT", size=(40, 1))],
+    [sg.Button("Recommend Inheritance", key="INHERIT")],
     [sg.Multiline("", size=(100, 20), key="OUTPUT", expand_x=True, expand_y=True)],
     [sg.Button("Exit", key="EXIT")]
 ]
@@ -32,9 +36,6 @@ window = sg.Window("Uma Musume Helper", layout, resizable=True)
 horses_data = []
 cards_data = []
 
-# ----------------------------
-# Event Loop
-# ----------------------------
 while True:
     event, values = window.read()
 
@@ -46,14 +47,25 @@ while True:
         horses_data = data.get("horses", [])
         cards_data = data.get("cards", [])
 
+        horse_names = [h['name'] for h in horses_data]
+        window["HORSE_SELECT"].update(values=horse_names)
+
         logging.info(f"Loaded {len(horses_data)} horses and {len(cards_data)} cards.")
 
-        if horses_data and cards_data:
-            output = f"Horses (first 5):\n" + "\n".join([h['name'] for h in horses_data[:5]]) + "\n\n"
-            output += "Cards (first 5):\n" + "\n".join([c['name'] for c in cards_data[:5]])
-            window["OUTPUT"].update(output)
-        else:
-            window["OUTPUT"].update("Failed to fetch data. Check logs.")
+        window["OUTPUT"].update(
+            f"Loaded {len(horses_data)} horses and {len(cards_data)} cards.\n"
+            "Select a horse and click Recommend Inheritance."
+        )
+
+    if event == "INHERIT":
+        selected = values.get("HORSE_SELECT")
+        if not selected:
+            window["OUTPUT"].update("Please select a horse first.")
+            continue
+
+        result = recommend_inheritance(selected, horses_data)
+
+        window["OUTPUT"].update(result)
 
 window.close()
 logging.info("Application closed")
