@@ -1,113 +1,82 @@
-import sys
 import os
-import logging
+import json
 import threading
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk
 from PIL import Image, ImageTk
-from utils.fetch import fetch_data
-from utils.recommend import recommend_inheritance
+from utils.fetch import fetch_all
+from utils.recommender import recommend_inheritance
 
-# ----------------------------
-# Fix logging path for EXE
-# ----------------------------
-if getattr(sys, 'frozen', False):
-    base_path = os.path.dirname(sys.executable)
-else:
-    base_path = os.path.dirname(__file__)
+DATA_DIR = "data"
+os.makedirs(DATA_DIR, exist_ok=True)
 
-log_dir = os.path.join(base_path, "logs")
-os.makedirs(log_dir, exist_ok=True)
+characters = []
+support_cards = []
 
-logging.basicConfig(
-    filename=os.path.join(log_dir, "log.txt"),
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
-
-logging.info("Application started")
-
-# ----------------------------
-# GUI Setup
-# ----------------------------
 root = tk.Tk()
-root.title("Uma Musume Helper")
-root.geometry("900x650")
+root.title("Uma Musume Deck Builder")
+root.geometry("1000x750")
 
-horses_data = []
-cards_data = []
-horse_images = {}
-
-frame = ttk.Frame(root, padding=10)
-frame.pack(fill="both", expand=True)
-
-title = ttk.Label(frame, text="Uma Musume Helper", font=("Arial", 18))
-title.pack(pady=10)
-
-update_btn = ttk.Button(frame, text="Update Horses & Cards")
-update_btn.pack(pady=5)
-
-progress = ttk.Progressbar(frame, orient="horizontal", mode="determinate", length=400)
+progress = ttk.Progressbar(root, length=500)
 progress.pack(pady=5)
 
-horse_combo = ttk.Combobox(frame, state="readonly", width=60)
-horse_combo.pack(pady=10)
+notebook = ttk.Notebook(root)
+notebook.pack(fill="both", expand=True)
 
-img_label = ttk.Label(frame)
-img_label.pack(pady=10)
+tab_main = ttk.Frame(notebook)
+notebook.add(tab_main, text="Characters")
 
-output = tk.Text(frame, height=10)
-output.pack(fill="both", expand=True)
+tab_support = ttk.Frame(notebook)
+notebook.add(tab_support, text="Support Cards")
 
-# ----------------------------
-# Update Thread
-# ----------------------------
-def update_data_thread():
-    global horses_data, cards_data, horse_images
+char_combo = ttk.Combobox(tab_main, width=60)
+char_combo.pack(pady=10)
 
-    progress["value"] = 0
-    output.delete("1.0", tk.END)
-    output.insert(tk.END, "Starting update...\n")
+char_image_label = ttk.Label(tab_main)
+char_image_label.pack()
 
-    data = fetch_data(progress_callback=update_progress)
+output = tk.Text(tab_main, height=8)
+output.pack(fill="x")
 
-    horses_data = data.get("horses", [])
-    cards_data = data.get("cards", [])
-
-    horse_combo["values"] = [h["name"] for h in horses_data]
-
-    output.insert(tk.END, f"\nLoaded {len(horses_data)} horses\n")
-    output.insert(tk.END, f"Loaded {len(cards_data)} support cards\n")
-
-    logging.info(f"Loaded {len(horses_data)} horses and {len(cards_data)} cards.")
-
-def update_progress(value):
-    progress["value"] = value
+def update_progress(val):
+    progress["value"] = val
     root.update_idletasks()
 
 def update_data():
-    threading.Thread(target=update_data_thread, daemon=True).start()
+    global characters, support_cards
 
-update_btn.config(command=update_data)
+    characters, support_cards = fetch_all(update_progress)
 
-# ----------------------------
-# Image Display
-# ----------------------------
-def show_selected(event):
-    selected = horse_combo.get()
-    for horse in horses_data:
-        if horse["name"] == selected:
-            try:
-                img = Image.open(horse["image_path"])
-                img = img.resize((200, 200))
+    with open("data/characters.json", "w") as f:
+        json.dump(characters, f, indent=2)
+
+    with open("data/support_cards.json", "w") as f:
+        json.dump(support_cards, f, indent=2)
+
+    char_combo["values"] = [c["name"] for c in characters]
+
+def update_thread():
+    threading.Thread(target=update_data, daemon=True).start()
+
+update_button = ttk.Button(root, text="Update Data", command=update_thread)
+update_button.pack(pady=5)
+
+def on_select(event):
+    selected = char_combo.get()
+    for c in characters:
+        if c["name"] == selected:
+            if c["images"]:
+                img = Image.open(c["images"][0])
+                img = img.resize((250,250))
                 photo = ImageTk.PhotoImage(img)
-                img_label.config(image=photo)
-                img_label.image = photo
-            except Exception as e:
-                logging.error(str(e))
+                char_image_label.config(image=photo)
+                char_image_label.image = photo
+
+            rec = recommend_inheritance(c)
+            output.delete("1.0", tk.END)
+            output.insert(tk.END, json.dumps(rec, indent=2))
             break
 
-horse_combo.bind("<<ComboboxSelected>>", show_selected)
+char_combo.bind("<<ComboboxSelected>>", on_select)
 
 root.mainloop()
-logging.info("Application closed")
