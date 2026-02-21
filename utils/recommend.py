@@ -1,29 +1,43 @@
-# Blacklist for cards
-blacklist = set()
+# Simple inheritance recommendation logic
 
-# Stat priority by horse type
-STAT_PRIORITY = {
-    "Front Runner": ["Speed", "Stamina", "Power", "Wit"],
-    "Sprinter": ["Speed", "Power", "Stamina", "Wit"],
-    "Stamina": ["Stamina", "Speed", "Power", "Wit"],
-    "Power": ["Power", "Speed", "Stamina", "Wit"]
+INHERITANCE_PRIORITY = {
+    "Short": ["Speed", "Power"],
+    "Mile": ["Speed", "Power"],
+    "Medium": ["Speed", "Stamina"],
+    "Long": ["Stamina", "Power"]
 }
 
-def find_horse(horse_name, horses):
-    """Return all horse objects matching a name (partial match for versions)"""
-    return [h for h in horses if horse_name.lower() in h['name'].lower()]
+def recommend_inheritance(horse_name, horses):
+    """
+    Recommend inheritance parents based on distance keywords in name
+    """
+    horse = next((h for h in horses if h["name"] == horse_name), None)
+    if not horse:
+        return "Horse not found."
 
-def recommend_cards_for_horse(horse, cards):
-    """Return all valid cards for a horse, filtered by blacklist"""
-    return [c for c in cards if c['type'] in STAT_PRIORITY.get(horse['type'], []) and c['name'] not in blacklist]
+    # Simple distance detection
+    name_lower = horse_name.lower()
 
-def build_deck(horse, cards, deck_size=6):
-    """Return top cards for a horse"""
-    valid_cards = recommend_cards_for_horse(horse, cards)
-    priority = STAT_PRIORITY.get(horse['type'], [])
-    valid_cards.sort(key=lambda x: priority.index(x['type']) if x['type'] in priority else 10)
-    return valid_cards[:deck_size]
+    if "long" in name_lower:
+        distance = "Long"
+    elif "medium" in name_lower:
+        distance = "Medium"
+    elif "mile" in name_lower:
+        distance = "Mile"
+    else:
+        distance = "Short"
 
-def recommend_races(horse):
-    """Return recommended race distances"""
-    return horse.get('distances', [])
+    stats = INHERITANCE_PRIORITY.get(distance, [])
+
+    result = f"Inheritance Recommendation for {horse_name}\n"
+    result += f"Primary Focus: {distance} distance\n\n"
+    result += "Recommended Stats:\n"
+    for stat in stats:
+        result += f"- {stat}\n"
+
+    result += "\nRecommended Parent Types:\n"
+    result += "- Parents with matching distance aptitude\n"
+    result += "- High star Speed/Stamina factors\n"
+    result += "- Compatible racing strategy\n"
+
+    return result
