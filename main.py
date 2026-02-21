@@ -1,89 +1,92 @@
 import os
-import json
+import sys
+import logging
 import threading
-import tkinter as tk
-from tkinter import ttk
-from PIL import Image, ImageTk
-from utils.fetch import fetch_all
-from utils.recommend import recommend_inheritance
+import traceback
+import PySimpleGUI as sg
 
-DATA_DIR = "data"
-IMAGE_DIR = "images"
-os.makedirs(DATA_DIR, exist_ok=True)
-os.makedirs(IMAGE_DIR, exist_ok=True)
+from utils.fetch import fetch_all_data
 
-characters = []
-support_cards = []
+# =========================
+# PATH + LOGGING SETUP
+# =========================
 
-root = tk.Tk()
-root.title("Uma Musume Deck Builder")
-root.geometry("1000x750")
+def get_base_path():
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
 
-progress = ttk.Progressbar(root, length=500)
-progress.pack(pady=5)
+BASE_PATH = get_base_path()
+LOG_DIR = os.path.join(BASE_PATH, "logs")
+os.makedirs(LOG_DIR, exist_ok=True)
 
-update_button = ttk.Button(root, text="Update Data")
-update_button.pack(pady=5)
+LOG_FILE = os.path.join(LOG_DIR, "app.log")
 
-notebook = ttk.Notebook(root)
-notebook.pack(fill="both", expand=True)
+logging.basicConfig(
+    filename=LOG_FILE,
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
-tab_main = ttk.Frame(notebook)
-notebook.add(tab_main, text="Characters")
+logging.info("Application started")
 
-tab_support = ttk.Frame(notebook)
-notebook.add(tab_support, text="Support Cards")
+# =========================
+# UPDATE THREAD
+# =========================
 
-char_combo = ttk.Combobox(tab_main, width=60)
-char_combo.pack(pady=10)
+def update_data_thread(window):
+    try:
+        logging.info("Starting data update...")
+        window.write_event_value("-STATUS-", "Fetching data...")
 
-char_image_label = ttk.Label(tab_main)
-char_image_label.pack()
+        horses, cards = fetch_all_data()
 
-output = tk.Text(tab_main, height=8)
-output.pack(fill="x")
+        logging.info(f"Fetched {len(horses)} horses and {len(cards)} cards.")
 
-def update_progress(val):
-    progress["value"] = val
-    root.update_idletasks()
+        window.write_event_value("-UPDATE_DONE-", (horses, cards))
 
-def update_data():
-    global characters, support_cards
+    except Exception:
+        logging.error("Update failed:")
+        logging.error(traceback.format_exc())
+        window.write_event_value("-ERROR-", "Update failed. Check logs.")
 
-    characters, support_cards = fetch_all(update_progress)
+def start_update(window):
+    threading.Thread(
+        target=update_data_thread,
+        args=(window,),
+        daemon=True
+    ).start()
 
-    with open(os.path.join(DATA_DIR, "characters.json"), "w", encoding="utf-8") as f:
-        json.dump(characters, f, indent=2, ensure_ascii=False)
+# =========================
+# GUI
+# =========================
 
-    with open(os.path.join(DATA_DIR, "support_cards.json"), "w", encoding="utf-8") as f:
-        json.dump(support_cards, f, indent=2, ensure_ascii=False)
+layout = [
+    [sg.Button("Update Data")],
+    [sg.Text("Status: Idle", key="-STATUS-")],
+]
 
-    char_combo["values"] = [c["name"] for c in characters]
+window = sg.Window("Umamusume Builder", layout)
 
-def update_thread():
-    threading.Thread(target=update_data, daemon=True).start()
+while True:
+    event, values = window.read()
 
-update_button.config(command=update_thread)
+    if event == sg.WINDOW_CLOSED:
+        break
 
-def on_select(event):
-    selected = char_combo.get()
-    for c in characters:
-        if c["name"] == selected:
-            if c["images"]:
-                try:
-                    img = Image.open(c["images"][0])
-                    img = img.resize((250, 250))
-                    photo = ImageTk.PhotoImage(img)
-                    char_image_label.config(image=photo)
-                    char_image_label.image = photo
-                except:
-                    pass
+    if event == "Update Data":
+        start_update(window)
 
-            rec = recommend_inheritance(c)
-            output.delete("1.0", tk.END)
-            output.insert(tk.END, json.dumps(rec, indent=2))
-            break
+    if event == "-STATUS-":
+        window["-STATUS-"].update(f"Status: {values}")
 
-char_combo.bind("<<ComboboxSelected>>", on_select)
+    if event == "-UPDATE_DONE-":
+        horses, cards = values
+        window["-STATUS-"].update(
+            f"Loaded {len(horses)} horses and {len(cards)} cards."
+        )
 
-root.mainloop()
+    if event == "-ERROR-":
+        sg.popup_error(values)
+
+window.close()
