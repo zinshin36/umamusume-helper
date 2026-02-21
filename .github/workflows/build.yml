@@ -2,7 +2,7 @@ name: Build Windows EXE
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -10,26 +10,35 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-      - name: Setup Python 3.10.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10.11"
+    - name: Set up Python 3.10.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: 3.10.11
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pyinstaller
-          pip install -r requirements.txt
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller
+        pip install -r requirements.txt
 
-      - name: Build EXE
-        run: |
-          python -m PyInstaller --onefile --noconsole --name UmamusumeApp main.py
+    - name: Build EXE with PyInstaller
+      run: |
+        pyinstaller --onefile --noconsole main.py
 
-      - name: Upload EXE Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: UmamusumeApp-Windows.zip
-          path: dist/UmamusumeApp.exe
+    - name: Prepare clean output folder
+      run: |
+        mkdir release
+        copy dist\main.exe release\UmamusumeBuilder.exe
+
+    - name: Create ZIP archive
+      run: |
+        powershell Compress-Archive -Path release\UmamusumeBuilder.exe -DestinationPath Umamusume-Windows-Build.zip
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Umamusume-Windows-Build
+        path: Umamusume-Windows-Build.zip
