@@ -18,18 +18,28 @@ jobs:
         with:
           python-version: 3.10.11
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller  # <-- ensure pyinstaller is installed
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
 
-      - name: Build EXE with PyInstaller
+      - name: Install project dependencies
         run: |
-          python -m pyinstaller --onefile --noconsole main.py
+          pip install requests
+          pip install pandas
+          pip install PySimpleGUI==5.0.8.3
+          pip install beautifulsoup4
+          pip install lxml
+
+      - name: Install PyInstaller explicitly
+        run: pip install pyinstaller
+
+      - name: Verify PyInstaller Installed
+        run: python -m pyinstaller --version
+
+      - name: Build EXE
+        run: python -m pyinstaller --onefile --noconsole main.py
 
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
         with:
-          name: built-exe
+          name: UmaMusumeHelper
           path: dist/main.exe
