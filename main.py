@@ -19,7 +19,10 @@ logging.info("Application started")
 # ----------------------------
 # GUI Setup
 # ----------------------------
-sg.theme("DarkBlue")
+try:
+    sg.theme("DarkBlue3")
+except Exception:
+    pass  # Prevent crash if theme API changes
 
 layout = [
     [sg.Text("Uma Musume Helper (EN Wiki)", font=("Arial", 16))],
@@ -64,7 +67,6 @@ while True:
             continue
 
         result = recommend_inheritance(selected, horses_data)
-
         window["OUTPUT"].update(result)
 
 window.close()
