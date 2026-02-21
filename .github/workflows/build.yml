@@ -18,27 +18,30 @@ jobs:
         with:
           python-version: 3.10.11
 
+      - name: Show Python Path (Debug)
+        run: |
+          where python
+          python --version
+
       - name: Upgrade pip
         run: python -m pip install --upgrade pip
 
-      - name: Install project dependencies
+      - name: Install Dependencies (FORCE SAME INTERPRETER)
         run: |
-          pip install requests
-          pip install pandas
-          pip install PySimpleGUI==5.0.8.3
-          pip install beautifulsoup4
-          pip install lxml
-
-      - name: Install PyInstaller explicitly
-        run: pip install pyinstaller
+          python -m pip install requests
+          python -m pip install pandas
+          python -m pip install PySimpleGUI==5.0.8.3
+          python -m pip install beautifulsoup4
+          python -m pip install lxml
+          python -m pip install pyinstaller
 
       - name: Verify PyInstaller Installed
-        run: python -m pyinstaller --version
+        run: python -m PyInstaller --version
 
       - name: Build EXE
-        run: python -m pyinstaller --onefile --noconsole main.py
+        run: python -m PyInstaller --onefile --noconsole main.py
 
-      - name: Upload EXE artifact
+      - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
           name: UmaMusumeHelper
