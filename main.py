@@ -30,7 +30,7 @@ logging.basicConfig(
 logging.info("Application started")
 
 # =========================
-# FAKE DATA FETCH
+# SIMULATED DATA FETCH
 # =========================
 
 def fetch_data():
