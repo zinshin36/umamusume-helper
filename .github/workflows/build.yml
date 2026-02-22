@@ -24,22 +24,17 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
 
-    - name: Build EXE (force include hidden imports)
-      run: |
-        pyinstaller ^
-          --onefile ^
-          --noconsole ^
-          --clean ^
-          --hidden-import=PySimpleGUI ^
-          main.py
+    - name: Build EXE
+      run: pyinstaller --onefile --noconsole --clean --hidden-import=PySimpleGUI main.py
 
-    - name: Prepare Release Folder
+    - name: Create Proper ZIP
       run: |
         mkdir release
         copy dist\main.exe release\UmamusumeBuilder.exe
+        powershell Compress-Archive -Path release\UmamusumeBuilder.exe -DestinationPath UmamusumeBuilder.zip
 
-    - name: Upload Artifact
+    - name: Upload Forced ZIP
       uses: actions/upload-artifact@v4
       with:
         name: UmamusumeBuilder
-        path: release/UmamusumeBuilder.exe
+        path: UmamusumeBuilder.zip
