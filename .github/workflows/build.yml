@@ -25,19 +25,18 @@ jobs:
         pip install -r requirements.txt
 
     - name: Build EXE
-      run: pyinstaller --onefile --noconsole --clean --collect-all PySimpleGUI main.py
+      run: pyinstaller --onefile --noconsole --clean main.py
 
     - name: Prepare Zip Folder
       run: |
         mkdir package
         copy dist\main.exe package\UmamusumeBuilder.exe
 
-    - name: Create FINAL Zip
+    - name: Create Final ZIP
       run: powershell Compress-Archive -Path package\* -DestinationPath UmamusumeBuilder.zip
 
-    - name: Upload Final ZIP Only
+    - name: Upload Final ZIP
       uses: actions/upload-artifact@v4
       with:
         name: UmamusumeBuilder
         path: UmamusumeBuilder.zip
-        compression-level: 0
