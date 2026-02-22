@@ -5,10 +5,10 @@ import logging
 import time
 import tkinter as tk
 from tkinter import ttk, messagebox
-from PIL import Image, ImageDraw, ImageFont, ImageTk
+from PIL import Image, ImageDraw, ImageTk
 
 # =========================
-# PATH + LOGGING SETUP
+# PATH + LOGGING
 # =========================
 
 def get_base_path():
@@ -20,10 +20,8 @@ BASE_PATH = get_base_path()
 LOG_DIR = os.path.join(BASE_PATH, "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
 
-LOG_FILE = os.path.join(LOG_DIR, "app.log")
-
 logging.basicConfig(
-    filename=LOG_FILE,
+    filename=os.path.join(LOG_DIR, "app.log"),
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
@@ -31,7 +29,7 @@ logging.basicConfig(
 logging.info("Application started")
 
 # =========================
-# SIMULATED DATA FETCH
+# FAKE DATA FETCH
 # =========================
 
 def fetch_data():
@@ -49,13 +47,10 @@ def fetch_data():
 # =========================
 
 def create_placeholder_image(text):
-    img = Image.new("RGB", (140, 140), color=(30, 30, 30))
+    img = Image.new("RGB", (150, 150), color=(35, 35, 35))
     draw = ImageDraw.Draw(img)
-
-    draw.rectangle((0, 0, 139, 139), outline=(255, 105, 180), width=3)
-
-    draw.text((20, 55), text[:12], fill=(255, 255, 255))
-
+    draw.rectangle((0, 0, 149, 149), outline=(255, 105, 180), width=3)
+    draw.text((20, 65), text[:10], fill=(255, 255, 255))
     return ImageTk.PhotoImage(img)
 
 # =========================
@@ -85,53 +80,64 @@ def finish_update(horses, cards):
 
     image_refs.clear()
 
-    section_label("HORSES")
-
-    for horse in horses:
-        add_card(horse)
-
-    section_label("SUPPORT CARDS")
-
-    for card in cards:
-        add_card(card)
+    create_section("HORSES", horses)
+    create_section("SUPPORT CARDS", cards)
 
     status_var.set(f"Loaded {len(horses)} horses and {len(cards)} cards.")
 
 # =========================
-# GUI HELPERS
+# GRID SECTION BUILDER
 # =========================
 
 image_refs = []
 
-def section_label(text):
-    lbl = tk.Label(
+def create_section(title, items):
+    title_label = tk.Label(
         content_frame,
-        text=text,
+        text=title,
         font=("Segoe UI", 14, "bold"),
         bg="#1e1e1e",
-        fg="white",
+        fg="#ff69b4",
         anchor="w"
     )
-    lbl.pack(fill="x", pady=(15, 5))
+    title_label.pack(fill="x", pady=(20, 10), padx=10)
 
-def add_card(name):
-    card = tk.Frame(content_frame, bg="#2b2b2b", bd=1, relief="solid")
-    card.pack(fill="x", pady=5, padx=10)
+    grid_frame = tk.Frame(content_frame, bg="#1e1e1e")
+    grid_frame.pack(padx=10)
 
-    img = create_placeholder_image(name)
-    image_refs.append(img)
+    columns = 3
 
-    img_label = tk.Label(card, image=img, bg="#2b2b2b")
-    img_label.pack(side="left", padx=10, pady=10)
+    for index, item in enumerate(items):
+        row = index // columns
+        col = index % columns
 
-    name_label = tk.Label(
-        card,
-        text=name,
-        font=("Segoe UI", 12),
-        bg="#2b2b2b",
-        fg="white"
-    )
-    name_label.pack(side="left", padx=10)
+        card = tk.Frame(
+            grid_frame,
+            bg="#2b2b2b",
+            width=170,
+            height=220,
+            bd=1,
+            relief="solid"
+        )
+        card.grid(row=row, column=col, padx=10, pady=10)
+        card.grid_propagate(False)
+
+        img = create_placeholder_image(item)
+        image_refs.append(img)
+
+        img_label = tk.Label(card, image=img, bg="#2b2b2b")
+        img_label.pack(pady=(15, 10))
+
+        name_label = tk.Label(
+            card,
+            text=item,
+            font=("Segoe UI", 11),
+            bg="#2b2b2b",
+            fg="white",
+            wraplength=150,
+            justify="center"
+        )
+        name_label.pack()
 
 # =========================
 # GUI SETUP
@@ -139,17 +145,17 @@ def add_card(name):
 
 root = tk.Tk()
 root.title("Umamusume Builder")
-root.geometry("600x600")
+root.geometry("700x700")
 root.configure(bg="#1e1e1e")
 
 header = tk.Label(
     root,
     text="Umamusume Data Builder",
-    font=("Segoe UI", 18, "bold"),
+    font=("Segoe UI", 20, "bold"),
     bg="#1e1e1e",
     fg="#ff69b4"
 )
-header.pack(pady=15)
+header.pack(pady=20)
 
 update_button = tk.Button(
     root,
@@ -161,7 +167,7 @@ update_button = tk.Button(
     fg="white",
     activebackground="#ff85c1"
 )
-update_button.pack(pady=5)
+update_button.pack()
 
 progress = ttk.Progressbar(
     root,
