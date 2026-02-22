@@ -1,4 +1,4 @@
-name: Build Windows EXE
+name: Build Windows EXE (Zipped)
 
 on:
   push:
@@ -21,20 +21,23 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
         pip install pyinstaller
+        pip install -r requirements.txt
 
     - name: Build EXE
-      run: pyinstaller --onefile --noconsole --clean --hidden-import=PySimpleGUI main.py
+      run: pyinstaller --onefile --noconsole --clean --collect-all PySimpleGUI main.py
 
-    - name: Create Proper ZIP
+    - name: Prepare Zip Folder
       run: |
-        mkdir release
-        copy dist\main.exe release\UmamusumeBuilder.exe
-        powershell Compress-Archive -Path release\UmamusumeBuilder.exe -DestinationPath UmamusumeBuilder.zip
+        mkdir package
+        copy dist\main.exe package\UmamusumeBuilder.exe
 
-    - name: Upload Forced ZIP
+    - name: Create FINAL Zip
+      run: powershell Compress-Archive -Path package\* -DestinationPath UmamusumeBuilder.zip
+
+    - name: Upload Final ZIP Only
       uses: actions/upload-artifact@v4
       with:
         name: UmamusumeBuilder
         path: UmamusumeBuilder.zip
+        compression-level: 0
