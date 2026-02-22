@@ -1,69 +1,48 @@
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 from utils.crawler import SafeCrawler
 
 BASE = "https://umamusume.run"
+INDEX = BASE + "/database"
+SUPPORT = BASE + "/database/support-cards"
 
-CHAR_INDEX = BASE + "/database"
-SUPPORT_INDEX = BASE + "/database/support-cards"
 
+def crawl_section(crawler, url, entry_type):
+    html = crawler.get(url)
+    if not html:
+        return []
 
-def extract_internal_links(base, html):
     soup = BeautifulSoup(html, "lxml")
-    links = set()
+    results = []
 
     for a in soup.find_all("a", href=True):
         href = a["href"]
 
-        if href.startswith("/"):
-            full = urljoin(base, href)
-            if urlparse(full).netloc == urlparse(base).netloc:
-                links.add(full)
+        if "/api/" in href or "/admin/" in href:
+            continue
 
-    return list(links)
+        if not href.startswith("/"):
+            continue
 
+        full_url = urljoin(BASE, href)
 
-def extract_basic_page_data(base, html):
-    soup = BeautifulSoup(html, "lxml")
-
-    title_tag = soup.find("h1")
-    if not title_tag:
-        return None
-
-    name = title_tag.get_text(strip=True)
-
-    img_tag = soup.find("img")
-    image_url = None
-
-    if img_tag and img_tag.get("src"):
-        image_url = img_tag["src"]
-
-        if image_url.startswith("//"):
-            image_url = "https:" + image_url
-        elif image_url.startswith("/"):
-            image_url = urljoin(base, image_url)
-
-    return name, image_url
-
-
-def crawl_section(crawler, index_url, entry_type):
-    html = crawler.get(index_url)
-    if not html:
-        return []
-
-    links = extract_internal_links(BASE, html)
-    results = []
-
-    for link in links:
-        page_html = crawler.get(link)
+        page_html = crawler.get(full_url)
         if not page_html:
             continue
 
-        data = extract_basic_page_data(BASE, page_html)
-        if not data:
+        page = BeautifulSoup(page_html, "lxml")
+        title = page.find("h1")
+
+        if not title:
             continue
 
-        name, image_url = data
+        name = title.get_text(strip=True)
+
+        img = page.find("img")
+        image_url = img["src"] if img and img.get("src") else None
+
+        if image_url and image_url.startswith("/"):
+            image_url = urljoin(BASE, image_url)
 
         results.append({
             "name": name,
@@ -78,7 +57,7 @@ def crawl_section(crawler, index_url, entry_type):
 def fetch_all():
     crawler = SafeCrawler(BASE)
 
-    horses = crawl_section(crawler, CHAR_INDEX, "character")
-    cards = crawl_section(crawler, SUPPORT_INDEX, "support")
+    horses = crawl_section(crawler, INDEX, "character")
+    cards = crawl_section(crawler, SUPPORT, "support")
 
     return horses, cards
