@@ -1,11 +1,10 @@
 import os
 import sys
-import logging
 import threading
-import traceback
-import PySimpleGUI as sg
-
-from utils.fetch import fetch_all_data
+import logging
+import time
+import tkinter as tk
+from tkinter import messagebox
 
 # =========================
 # PATH + LOGGING SETUP
@@ -31,62 +30,49 @@ logging.basicConfig(
 logging.info("Application started")
 
 # =========================
-# UPDATE THREAD
+# FAKE DATA FETCH
 # =========================
 
-def update_data_thread(window):
+def fetch_data():
+    logging.info("Fetching data...")
+    time.sleep(2)
+
+    horses = ["Special Week", "Silence Suzuka", "Tokai Teio"]
+    cards = ["Kitasan Black", "Fine Motion", "Super Creek"]
+
+    logging.info("Fetch complete")
+    return horses, cards
+
+# =========================
+# THREAD HANDLER
+# =========================
+
+def start_update():
+    status_label.config(text="Status: Fetching data...")
+    threading.Thread(target=update_thread, daemon=True).start()
+
+def update_thread():
     try:
-        logging.info("Starting data update...")
-        window.write_event_value("-STATUS-", "Fetching data...")
-
-        horses, cards = fetch_all_data()
-
-        logging.info(f"Fetched {len(horses)} horses and {len(cards)} cards.")
-
-        window.write_event_value("-UPDATE_DONE-", (horses, cards))
-
-    except Exception:
-        logging.error("Update failed:")
-        logging.error(traceback.format_exc())
-        window.write_event_value("-ERROR-", "Update failed. Check logs.")
-
-def start_update(window):
-    threading.Thread(
-        target=update_data_thread,
-        args=(window,),
-        daemon=True
-    ).start()
+        horses, cards = fetch_data()
+        root.after(0, lambda: status_label.config(
+            text=f"Loaded {len(horses)} horses and {len(cards)} cards."
+        ))
+    except Exception as e:
+        logging.error(str(e))
+        root.after(0, lambda: messagebox.showerror("Error", str(e)))
 
 # =========================
 # GUI
 # =========================
 
-layout = [
-    [sg.Button("Update Data")],
-    [sg.Text("Status: Idle", key="-STATUS-")],
-]
+root = tk.Tk()
+root.title("Umamusume Builder")
+root.geometry("350x150")
 
-window = sg.Window("Umamusume Builder", layout)
+update_button = tk.Button(root, text="Update Data", command=start_update)
+update_button.pack(pady=20)
 
-while True:
-    event, values = window.read()
+status_label = tk.Label(root, text="Status: Idle")
+status_label.pack()
 
-    if event == sg.WINDOW_CLOSED:
-        break
-
-    if event == "Update Data":
-        start_update(window)
-
-    if event == "-STATUS-":
-        window["-STATUS-"].update(f"Status: {values}")
-
-    if event == "-UPDATE_DONE-":
-        horses, cards = values
-        window["-STATUS-"].update(
-            f"Loaded {len(horses)} horses and {len(cards)} cards."
-        )
-
-    if event == "-ERROR-":
-        sg.popup_error(values)
-
-window.close()
+root.mainloop()
