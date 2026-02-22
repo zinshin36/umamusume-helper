@@ -14,6 +14,7 @@ class SafeCrawler:
         self.base_url = base_url.rstrip("/")
         self.progress_callback = progress_callback
         self.site_name = site_name
+
         self.session = requests.Session()
         self.session.headers.update({
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
@@ -28,6 +29,14 @@ class SafeCrawler:
             return False
 
         return True
+
+    def report_progress(self, current, total):
+        if not self.progress_callback:
+            return
+
+        percent = int((current / total) * 100)
+        message = f"Now crawling {self.site_name} — {percent}% complete"
+        self.progress_callback(message)
 
     def get(self, url):
         if not self.allowed(url):
@@ -55,11 +64,3 @@ class SafeCrawler:
 
         save_cache(url, response.text)
         return response.text
-
-    def report_progress(self, current, total):
-        if not self.progress_callback:
-            return
-
-        percent = int((current / total) * 100)
-        message = f"Now crawling {self.site_name} — {percent}% complete"
-        self.progress_callback(message)
