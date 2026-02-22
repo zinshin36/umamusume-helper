@@ -1,5 +1,5 @@
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 from utils.crawler import SafeCrawler
 
 BASE = "https://umamusu.wiki"
@@ -14,50 +14,64 @@ def extract_internal_links(base, html):
 
     for a in soup.find_all("a", href=True):
         href = a["href"]
+
         if href.startswith("/"):
             full = urljoin(base, href)
-            if base in full:
+            if urlparse(full).netloc == urlparse(base).netloc:
                 links.add(full)
 
     return list(links)
 
 
-def crawl_detail_pages(crawler, index_url):
+def extract_basic_page_data(base, html):
+    soup = BeautifulSoup(html, "lxml")
+
+    title_tag = soup.find("h1")
+    if not title_tag:
+        return None
+
+    name = title_tag.get_text(strip=True)
+
+    img_tag = soup.find("img")
+    image_url = None
+
+    if img_tag and img_tag.get("src"):
+        image_url = img_tag["src"]
+
+        if image_url.startswith("//"):
+            image_url = "https:" + image_url
+        elif image_url.startswith("/"):
+            image_url = urljoin(base, image_url)
+
+    return name, image_url
+
+
+def crawl_section(crawler, index_url, entry_type):
     html = crawler.get(index_url)
     if not html:
         return []
 
-    detail_links = extract_internal_links(BASE, html)
+    links = extract_internal_links(BASE, html)
     results = []
 
-    for link in detail_links:
+    for link in links:
         if "Game:" in link:
             continue
 
-        page = crawler.get(link)
-        if not page:
+        page_html = crawler.get(link)
+        if not page_html:
             continue
 
-        soup = BeautifulSoup(page, "lxml")
-
-        title = soup.find("h1")
-        if not title:
+        data = extract_basic_page_data(BASE, page_html)
+        if not data:
             continue
 
-        name = title.text.strip()
-
-        img = soup.find("img")
-        image_url = None
-        if img and img.get("src"):
-            image_url = img["src"]
-            if image_url.startswith("//"):
-                image_url = "https:" + image_url
-            elif image_url.startswith("/"):
-                image_url = urljoin(BASE, image_url)
+        name, image_url = data
 
         results.append({
             "name": name,
             "image": image_url,
+            "type": entry_type,
             "source": "umamusu_wiki"
         })
 
@@ -66,6 +80,8 @@ def crawl_detail_pages(crawler, index_url):
 
 def fetch_all():
     crawler = SafeCrawler(BASE)
-    horses = crawl_detail_pages(crawler, TRAINEE_INDEX)
-    cards = crawl_detail_pages(crawler, SUPPORT_INDEX)
+
+    horses = crawl_section(crawler, TRAINEE_INDEX, "character")
+    cards = crawl_section(crawler, SUPPORT_INDEX, "support")
+
     return horses, cards
