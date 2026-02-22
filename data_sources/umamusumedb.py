@@ -6,21 +6,25 @@ BASE = "https://umamusumedb.com"
 SITEMAP = BASE + "/sitemap-0.xml"
 
 
-def fetch_all():
-    crawler = SafeCrawler(BASE)
+def fetch_all(progress_callback=None):
+    crawler = SafeCrawler(BASE, progress_callback, "umamusumedb")
 
     sitemap_xml = crawler.get(SITEMAP)
     if not sitemap_xml:
         return [], []
 
     soup = BeautifulSoup(sitemap_xml, "xml")
-
     urls = [loc.text for loc in soup.find_all("loc")]
 
     horses = []
     cards = []
 
-    for url in urls:
+    total = len(urls)
+
+    for i, url in enumerate(urls, 1):
+
+        crawler.report_progress(i, total)
+
         if "/api/" in url or "/admin/" in url:
             continue
 
@@ -29,8 +33,8 @@ def fetch_all():
             continue
 
         page = BeautifulSoup(html, "lxml")
-
         title = page.find("h1")
+
         if not title:
             continue
 
