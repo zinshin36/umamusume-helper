@@ -1,7 +1,7 @@
 PySimpleGUI==4.60.5
-requests==2.31.0
-beautifulsoup4==4.12.2
-lxml==4.9.3
-html5lib==1.1
-pillow==10.2.0
-tqdm==4.66.1
+requests
+beautifulsoup4
+lxml
+html5lib
+pillow
+tqdm
