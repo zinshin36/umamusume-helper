@@ -16,23 +16,36 @@ def fetch_page(url):
     return response.text
 
 
-def parse_category_page(html):
+def parse_table_page(html):
     soup = BeautifulSoup(html, "lxml")
-
     results = []
 
-    gallery_items = soup.select(".gallerybox")
+    table = soup.find("table")
+    if not table:
+        logging.warning("No table found on page.")
+        return results
 
-    for item in gallery_items:
-        name_tag = item.select_one(".gallerytext a")
-        img_tag = item.select_one("img")
+    rows = table.find_all("tr")
 
-        if not name_tag:
+    for row in rows[1:]:  # Skip header
+        cols = row.find_all("td")
+        if not cols:
             continue
 
-        name = name_tag.get_text(strip=True)
+        # First column usually contains image + name
+        first_col = cols[0]
 
+        # Extract name
+        link = first_col.find("a")
+        if not link:
+            continue
+
+        name = link.get_text(strip=True)
+
+        # Extract image
+        img_tag = first_col.find("img")
         image_url = None
+
         if img_tag and img_tag.get("src"):
             image_url = img_tag["src"]
             if image_url.startswith("//"):
@@ -54,12 +67,11 @@ def fetch_all_data():
         horses_html = fetch_page(HORSES_PAGE)
         cards_html = fetch_page(CARDS_PAGE)
 
-        horses = parse_category_page(horses_html)
-        cards = parse_category_page(cards_html)
+        horses = parse_table_page(horses_html)
+        cards = parse_table_page(cards_html)
 
         logging.info(f"Horses fetched: {len(horses)}")
         logging.info(f"Cards fetched: {len(cards)}")
-
         logging.info(f"Fetch duration: {round(time.time() - start, 2)}s")
 
         return horses, cards
