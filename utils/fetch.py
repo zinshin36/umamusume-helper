@@ -3,7 +3,7 @@ from data_sources import umamusumedb, umamusume_run, gametora
 from utils.dedupe import merge_unique
 
 
-def fetch_all():
+def fetch_all_data():
     logging.info("Fetching from all allowed sources...")
 
     all_items = []
@@ -26,4 +26,9 @@ def fetch_all():
     merged = merge_unique(all_items)
 
     logging.info(f"Total unique entries: {len(merged)}")
-    return merged
+
+    # Return in expected format
+    horses = [x for x in merged if "character" in x.get("source", "").lower()]
+    cards = [x for x in merged if "support" in x.get("source", "").lower()]
+
+    return horses, cards
