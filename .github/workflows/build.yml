@@ -1,4 +1,4 @@
-name: Build Windows EXE (Zipped)
+name: Build Windows EXE
 
 on:
   push:
@@ -27,16 +27,13 @@ jobs:
     - name: Build EXE
       run: pyinstaller --onefile --noconsole --clean main.py
 
-    - name: Prepare Zip Folder
+    - name: Prepare Artifact Folder
       run: |
-        mkdir package
-        copy dist\main.exe package\UmamusumeBuilder.exe
+        mkdir release
+        copy dist\main.exe release\UmamusumeBuilder.exe
 
-    - name: Create Final ZIP
-      run: powershell Compress-Archive -Path package\* -DestinationPath UmamusumeBuilder.zip
-
-    - name: Upload Final ZIP
+    - name: Upload Folder (GitHub auto-zips ONCE)
       uses: actions/upload-artifact@v4
       with:
         name: UmamusumeBuilder
-        path: UmamusumeBuilder.zip
+        path: release/
