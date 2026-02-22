@@ -16,46 +16,46 @@ def fetch_page(url):
     return response.text
 
 
-def parse_table_page(html):
+def extract_from_tables(html):
     soup = BeautifulSoup(html, "lxml")
     results = []
 
-    table = soup.find("table")
-    if not table:
-        logging.warning("No table found on page.")
-        return results
+    tables = soup.find_all("table")
+    logging.info(f"Tables found: {len(tables)}")
 
-    rows = table.find_all("tr")
+    for table_index, table in enumerate(tables):
+        rows = table.find_all("tr")
 
-    for row in rows[1:]:  # Skip header
-        cols = row.find_all("td")
-        if not cols:
-            continue
+        for row in rows:
+            cols = row.find_all("td")
+            if not cols:
+                continue
 
-        # First column usually contains image + name
-        first_col = cols[0]
+            first_col = cols[0]
 
-        # Extract name
-        link = first_col.find("a")
-        if not link:
-            continue
+            link = first_col.find("a")
+            if not link:
+                continue
 
-        name = link.get_text(strip=True)
+            name = link.get_text(strip=True)
 
-        # Extract image
-        img_tag = first_col.find("img")
-        image_url = None
+            if not name:
+                continue
 
-        if img_tag and img_tag.get("src"):
-            image_url = img_tag["src"]
-            if image_url.startswith("//"):
-                image_url = "https:" + image_url
+            img_tag = first_col.find("img")
+            image_url = None
 
-        results.append({
-            "name": name,
-            "image": image_url
-        })
+            if img_tag and img_tag.get("src"):
+                image_url = img_tag["src"]
+                if image_url.startswith("//"):
+                    image_url = "https:" + image_url
 
+            results.append({
+                "name": name,
+                "image": image_url
+            })
+
+    logging.info(f"Extracted items: {len(results)}")
     return results
 
 
@@ -67,8 +67,8 @@ def fetch_all_data():
         horses_html = fetch_page(HORSES_PAGE)
         cards_html = fetch_page(CARDS_PAGE)
 
-        horses = parse_table_page(horses_html)
-        cards = parse_table_page(cards_html)
+        horses = extract_from_tables(horses_html)
+        cards = extract_from_tables(cards_html)
 
         logging.info(f"Horses fetched: {len(horses)}")
         logging.info(f"Cards fetched: {len(cards)}")
@@ -76,6 +76,6 @@ def fetch_all_data():
 
         return horses, cards
 
-    except Exception as e:
+    except Exception:
         logging.exception("Error during fetch_all_data")
-        raise e
+        raise
