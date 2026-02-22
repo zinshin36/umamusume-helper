@@ -1,34 +1,26 @@
 import logging
-from data_sources import umamusumedb, umamusume_run, gametora
 from utils.dedupe import merge_unique
+from data_sources import umamusu_wiki, umamusume_run, gametora, umamusumedb
 
 
 def fetch_all_data():
-    logging.info("Fetching from all allowed sources...")
+    logging.info("Starting multi-site manual index crawl...")
 
-    all_items = []
+    all_horses = []
+    all_cards = []
 
-    try:
-        all_items += umamusumedb.fetch_characters()
-    except Exception as e:
-        logging.error(f"umamusumedb failed: {e}")
+    for source in [umamusu_wiki, umamusume_run, gametora, umamusumedb]:
+        try:
+            horses, cards = source.fetch_all()
+            all_horses.extend(horses)
+            all_cards.extend(cards)
+        except Exception as e:
+            logging.error(f"{source.__name__} failed: {e}")
 
-    try:
-        all_items += umamusume_run.fetch_support_cards()
-    except Exception as e:
-        logging.error(f"umamusume.run failed: {e}")
+    all_horses = merge_unique(all_horses)
+    all_cards = merge_unique(all_cards)
 
-    try:
-        all_items += gametora.fetch_data()
-    except Exception as e:
-        logging.error(f"gametora failed: {e}")
+    logging.info(f"Total Horses: {len(all_horses)}")
+    logging.info(f"Total Cards: {len(all_cards)}")
 
-    merged = merge_unique(all_items)
-
-    logging.info(f"Total unique entries: {len(merged)}")
-
-    # Return in expected format
-    horses = [x for x in merged if "character" in x.get("source", "").lower()]
-    cards = [x for x in merged if "support" in x.get("source", "").lower()]
-
-    return horses, cards
+    return all_horses, all_cards
