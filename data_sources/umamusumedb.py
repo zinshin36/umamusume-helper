@@ -22,7 +22,6 @@ def fetch_all(progress_callback=None):
     total = len(urls)
 
     for i, url in enumerate(urls, 1):
-
         crawler.report_progress(i, total)
 
         if "/api/" in url or "/admin/" in url:
