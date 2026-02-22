@@ -4,7 +4,7 @@ from data_sources import umamusumedb
 
 
 def fetch_all_data(progress_callback=None):
-    logging.info("Starting multi-site manual index crawl...")
+    logging.info("Starting manual index crawl...")
 
     all_horses = []
     all_cards = []
