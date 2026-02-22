@@ -3,9 +3,13 @@ import sys
 import threading
 import logging
 import time
+import requests
 import tkinter as tk
 from tkinter import ttk, messagebox
 from PIL import Image, ImageDraw, ImageTk
+from io import BytesIO
+
+from utils.fetch import fetch_all_data
 
 # =========================
 # PATH + LOGGING
@@ -29,28 +33,40 @@ logging.basicConfig(
 logging.info("Application started")
 
 # =========================
-# FAKE DATA FETCH
+# IMAGE LOADING
 # =========================
 
-def fetch_data():
-    logging.info("Fetching data...")
-    time.sleep(2)
+IMAGE_SIZE = 150
+image_refs = []
+image_cache = {}
 
-    horses = ["Special Week", "Silence Suzuka", "Tokai Teio"]
-    cards = ["Kitasan Black", "Fine Motion", "Super Creek"]
+def load_image_from_url(url, fallback_text):
+    try:
+        if not url:
+            raise Exception("No image URL")
 
-    logging.info("Fetch complete")
-    return horses, cards
+        if url in image_cache:
+            return image_cache[url]
 
-# =========================
-# IMAGE GENERATION
-# =========================
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+
+        img = Image.open(BytesIO(response.content))
+        img = img.resize((IMAGE_SIZE, IMAGE_SIZE), Image.LANCZOS)
+
+        tk_img = ImageTk.PhotoImage(img)
+        image_cache[url] = tk_img
+        return tk_img
+
+    except Exception:
+        return create_placeholder_image(fallback_text)
+
 
 def create_placeholder_image(text):
-    img = Image.new("RGB", (150, 150), color=(35, 35, 35))
+    img = Image.new("RGB", (IMAGE_SIZE, IMAGE_SIZE), color=(35, 35, 35))
     draw = ImageDraw.Draw(img)
-    draw.rectangle((0, 0, 149, 149), outline=(255, 105, 180), width=3)
-    draw.text((20, 65), text[:10], fill=(255, 255, 255))
+    draw.rectangle((0, 0, IMAGE_SIZE - 1, IMAGE_SIZE - 1), outline=(255, 105, 180), width=3)
+    draw.text((20, IMAGE_SIZE // 2 - 10), text[:10], fill=(255, 255, 255))
     return ImageTk.PhotoImage(img)
 
 # =========================
@@ -65,7 +81,7 @@ def start_update():
 
 def update_thread():
     try:
-        horses, cards = fetch_data()
+        horses, cards = fetch_all_data()
         root.after(0, lambda: finish_update(horses, cards))
     except Exception as e:
         logging.error(str(e))
@@ -84,12 +100,11 @@ def finish_update(horses, cards):
     create_section("SUPPORT CARDS", cards)
 
     status_var.set(f"Loaded {len(horses)} horses and {len(cards)} cards.")
+    logging.info("GUI updated successfully")
 
 # =========================
 # GRID SECTION BUILDER
 # =========================
-
-image_refs = []
 
 def create_section(title, items):
     title_label = tk.Label(
@@ -122,7 +137,7 @@ def create_section(title, items):
         card.grid(row=row, column=col, padx=10, pady=10)
         card.grid_propagate(False)
 
-        img = create_placeholder_image(item)
+        img = load_image_from_url(item.get("image"), item["name"])
         image_refs.append(img)
 
         img_label = tk.Label(card, image=img, bg="#2b2b2b")
@@ -130,8 +145,8 @@ def create_section(title, items):
 
         name_label = tk.Label(
             card,
-            text=item,
-            font=("Segoe UI", 11),
+            text=item["name"],
+            font=("Segoe UI", 10),
             bg="#2b2b2b",
             fg="white",
             wraplength=150,
@@ -145,7 +160,7 @@ def create_section(title, items):
 
 root = tk.Tk()
 root.title("Umamusume Builder")
-root.geometry("700x700")
+root.geometry("800x750")
 root.configure(bg="#1e1e1e")
 
 header = tk.Label(
