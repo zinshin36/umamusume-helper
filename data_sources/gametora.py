@@ -1,47 +1,9 @@
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 from utils.crawler import SafeCrawler
 
 BASE = "https://gametora.com"
 INDEX = BASE + "/umamusume"
-
-
-def extract_internal_links(base, html):
-    soup = BeautifulSoup(html, "lxml")
-    links = set()
-
-    for a in soup.find_all("a", href=True):
-        href = a["href"]
-
-        if href.startswith("/"):
-            full = urljoin(base, href)
-            if urlparse(full).netloc == urlparse(base).netloc:
-                links.add(full)
-
-    return list(links)
-
-
-def extract_basic_page_data(base, html):
-    soup = BeautifulSoup(html, "lxml")
-
-    title_tag = soup.find("h1")
-    if not title_tag:
-        return None
-
-    name = title_tag.get_text(strip=True)
-
-    img_tag = soup.find("img")
-    image_url = None
-
-    if img_tag and img_tag.get("src"):
-        image_url = img_tag["src"]
-
-        if image_url.startswith("//"):
-            image_url = "https:" + image_url
-        elif image_url.startswith("/"):
-            image_url = urljoin(base, image_url)
-
-    return name, image_url
 
 
 def fetch_all():
@@ -51,36 +13,51 @@ def fetch_all():
     if not html:
         return [], []
 
-    links = extract_internal_links(BASE, html)
+    soup = BeautifulSoup(html, "lxml")
 
     horses = []
     cards = []
 
-    for link in links:
-        page_html = crawler.get(link)
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+
+        if "/api/" in href or "/admin/" in href:
+            continue
+
+        if not href.startswith("/"):
+            continue
+
+        url = urljoin(BASE, href)
+        page_html = crawler.get(url)
         if not page_html:
             continue
 
-        data = extract_basic_page_data(BASE, page_html)
-        if not data:
+        page = BeautifulSoup(page_html, "lxml")
+        title = page.find("h1")
+
+        if not title:
             continue
 
-        name, image_url = data
+        name = title.get_text(strip=True)
 
-        if "support" in link.lower():
-            entry_type = "support"
+        img = page.find("img")
+        image_url = img["src"] if img and img.get("src") else None
+
+        if image_url and image_url.startswith("/"):
+            image_url = urljoin(BASE, image_url)
+
+        if "support" in href.lower():
             cards.append({
                 "name": name,
                 "image": image_url,
-                "type": entry_type,
+                "type": "support",
                 "source": "gametora"
             })
         else:
-            entry_type = "character"
             horses.append({
                 "name": name,
                 "image": image_url,
-                "type": entry_type,
+                "type": "character",
                 "source": "gametora"
             })
 
