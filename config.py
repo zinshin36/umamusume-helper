@@ -1,6 +1,6 @@
-# Global Wiki pages (EN)
-HORSES_PAGE = "https://umamusu.wiki/w/Category:Trainees?tab=EN"
-CARDS_PAGE  = "https://umamusu.wiki/w/Category:Support_Cards?tab=EN"
+# Public Wiki pages (Global)
+HORSES_PAGE = "https://umamusu.wiki/Game:List_of_Trainees"
+CARDS_PAGE  = "https://umamusu.wiki/Game:List_of_Support_Cards"
 
-# Local cache
+# Local cache (future use)
 CACHE_FILE = "data/cache.json"
