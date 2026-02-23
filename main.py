@@ -1,22 +1,22 @@
-from pathlib import Path
 import logging
+import os
+from gui import UmaGui
+from data_manager import ensure_directories
 
-# CREATE FOLDERS FIRST
-Path("logs").mkdir(parents=True, exist_ok=True)
-Path("data/images").mkdir(parents=True, exist_ok=True)
+def setup_logging():
+    os.makedirs("logs", exist_ok=True)
 
-# THEN CONFIGURE LOGGING
-logging.basicConfig(
-    filename="logs/app.log",
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
-
-logging.info("Application started")
-
-from gui import App  # Import AFTER logging setup
-
+    logging.basicConfig(
+        filename="logs/app.log",
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+    )
 
 if __name__ == "__main__":
-    app = App()
-    app.mainloop()
+    ensure_directories()
+    setup_logging()
+
+    logging.info("Application started")
+
+    app = UmaGui()
+    app.run()
