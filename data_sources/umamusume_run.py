@@ -1,63 +1,37 @@
-from bs4 import BeautifulSoup
-from urllib.parse import urljoin
-from utils.crawler import SafeCrawler
+import requests
 
 BASE = "https://umamusume.run"
-INDEX = BASE + "/database"
-SUPPORT = BASE + "/database/support-cards"
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0"
+}
 
 
-def crawl_section(crawler, url, entry_type):
-    html = crawler.get(url)
-    if not html:
-        return []
+def fetch_all(progress_callback=None):
 
-    soup = BeautifulSoup(html, "lxml")
-    results = []
+    horses = []
+    cards = []
 
-    for a in soup.find_all("a", href=True):
-        href = a["href"]
+    try:
+        response = requests.get(f"{BASE}/database", headers=HEADERS, timeout=20)
+        data = response.json()
+        for item in data.get("characters", []):
+            horses.append({
+                "name": item.get("name"),
+                "source": "umamusume_run"
+            })
+    except:
+        pass
 
-        if "/api/" in href or "/admin/" in href:
-            continue
-
-        if not href.startswith("/"):
-            continue
-
-        full_url = urljoin(BASE, href)
-
-        page_html = crawler.get(full_url)
-        if not page_html:
-            continue
-
-        page = BeautifulSoup(page_html, "lxml")
-        title = page.find("h1")
-
-        if not title:
-            continue
-
-        name = title.get_text(strip=True)
-
-        img = page.find("img")
-        image_url = img["src"] if img and img.get("src") else None
-
-        if image_url and image_url.startswith("/"):
-            image_url = urljoin(BASE, image_url)
-
-        results.append({
-            "name": name,
-            "image": image_url,
-            "type": entry_type,
-            "source": "umamusume_run"
-        })
-
-    return results
-
-
-def fetch_all():
-    crawler = SafeCrawler(BASE)
-
-    horses = crawl_section(crawler, INDEX, "character")
-    cards = crawl_section(crawler, SUPPORT, "support")
+    try:
+        response = requests.get(f"{BASE}/database/support-cards", headers=HEADERS, timeout=20)
+        data = response.json()
+        for item in data.get("cards", []):
+            cards.append({
+                "name": item.get("name"),
+                "source": "umamusume_run"
+            })
+    except:
+        pass
 
     return horses, cards
