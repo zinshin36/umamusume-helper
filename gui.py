@@ -1,101 +1,112 @@
-# gui.py
-
+import tkinter as tk
+from tkinter import ttk, messagebox
+from PIL import Image, ImageTk
+import os
 import json
 import threading
-import tkinter as tk
-from tkinter import ttk
-from pathlib import Path
-from PIL import Image, ImageTk
+import logging
 
-from crawler import crawl_all
+from utils.fetch import fetch_all_sites
 
 
-class UmamusumeGUI:
+DATA_FILE = "data.json"
 
-    def __init__(self, base_path: Path):
-        self.base_path = base_path
-        self.data_file = base_path / "data" / "data.json"
 
-        self.root = tk.Tk()
-        self.root.title("Umamusume Builder")
-        self.root.geometry("900x600")
+class App(tk.Tk):
+    def __init__(self):
+        super().__init__()
+
+        self.title("Umamusume Builder")
+        self.geometry("900x600")
+
+        self.images_cache = []
 
         self.create_widgets()
-        self.ensure_data_file()
+        self.load_data()
 
     def create_widgets(self):
-        top = tk.Frame(self.root)
-        top.pack(pady=10)
 
-        self.crawl_btn = tk.Button(top, text="Crawl Wiki", command=self.start_crawl)
-        self.crawl_btn.pack(side=tk.LEFT, padx=5)
+        top_frame = tk.Frame(self)
+        top_frame.pack(pady=10)
 
-        self.progress = ttk.Progressbar(self.root, length=400)
-        self.progress.pack(pady=5)
+        self.crawl_btn = tk.Button(top_frame, text="Crawl Wiki", command=self.start_crawl)
+        self.crawl_btn.pack(side="left", padx=5)
 
-        self.status = tk.Label(self.root, text="Idle")
-        self.status.pack()
+        self.recommend_btn = tk.Button(top_frame, text="Recommend Support Cards", command=self.recommend_cards)
+        self.recommend_btn.pack(side="left", padx=5)
 
-        self.count_label = tk.Label(self.root, text="Horses: 0 | Cards: 0")
-        self.count_label.pack(pady=5)
+        self.blacklist_btn = tk.Button(top_frame, text="Blacklist Card", command=self.blacklist_card)
+        self.blacklist_btn.pack(side="left", padx=5)
 
-        self.image_frame = tk.Frame(self.root)
-        self.image_frame.pack(pady=10)
+        self.progress = ttk.Progressbar(self, mode="indeterminate")
+        self.progress.pack(fill="x", padx=20, pady=10)
 
-        self.image_labels = []
+        self.canvas = tk.Canvas(self)
+        self.canvas.pack(fill="both", expand=True)
 
-    def ensure_data_file(self):
-        if not self.data_file.exists():
-            self.data_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.data_file, "w") as f:
-                json.dump({"horses": [], "cards": [], "blacklist": []}, f)
+        self.scrollbar = tk.Scrollbar(self.canvas, orient="vertical")
+        self.scrollbar.pack(side="right", fill="y")
+
+        self.frame = tk.Frame(self.canvas)
+        self.canvas.create_window((0, 0), window=self.frame, anchor="nw")
+
+        self.frame.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+        self.scrollbar.config(command=self.canvas.yview)
 
     def start_crawl(self):
-        self.crawl_btn.config(state=tk.DISABLED)
-        threading.Thread(target=self.run_crawl, daemon=True).start()
+        threading.Thread(target=self.crawl).start()
 
-    def run_crawl(self):
-        data = crawl_all(self.base_path, self.update_progress)
+    def crawl(self):
+        self.progress.start()
+        logging.info("Starting crawl")
 
-        with open(self.data_file, "w") as f:
-            json.dump(data, f, indent=2)
+        data = fetch_all_sites()
 
-        self.update_counts(data)
-        self.display_images()
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
 
-        self.status.config(text="Finished")
-        self.crawl_btn.config(state=tk.NORMAL)
+        self.progress.stop()
+        self.load_data()
 
-    def update_progress(self, percent, message):
-        self.progress["value"] = percent
-        self.status.config(text=message)
-        self.root.update_idletasks()
+        messagebox.showinfo("Done", "Crawl complete")
 
-    def update_counts(self, data):
-        self.count_label.config(
-            text=f"Horses: {len(data['horses'])} | Cards: {len(data['cards'])}"
-        )
+    def load_data(self):
+        if not os.path.exists(DATA_FILE):
+            return
 
-    def display_images(self):
-        for lbl in self.image_labels:
-            lbl.destroy()
-        self.image_labels.clear()
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
 
-        horse_dir = self.base_path / "data" / "images" / "horses"
-        card_dir = self.base_path / "data" / "images" / "support"
+        for widget in self.frame.winfo_children():
+            widget.destroy()
 
-        images = list(horse_dir.glob("*.png"))[:3] + list(card_dir.glob("*.png"))[:3]
+        self.images_cache.clear()
 
-        for img_path in images:
-            img = Image.open(img_path)
-            img = img.resize((120, 120))
+        horses = data.get("horses", [])
+
+        for item in horses[:50]:  # limit to avoid overload
+            path = item.get("image")
+
+            if not os.path.exists(path):
+                continue
+
+            img = Image.open(path)
+            img = img.resize((100, 100))
             photo = ImageTk.PhotoImage(img)
 
-            lbl = tk.Label(self.image_frame, image=photo)
-            lbl.image = photo
-            lbl.pack(side=tk.LEFT, padx=5)
+            self.images_cache.append(photo)
 
-            self.image_labels.append(lbl)
+            label = tk.Label(self.frame, image=photo, text=item["name"], compound="top")
+            label.pack(side="left", padx=10, pady=10)
 
-    def run(self):
-        self.root.mainloop()
+    def recommend_cards(self):
+        messagebox.showinfo("Info", "Recommendation system coming next update")
+
+    def blacklist_card(self):
+        messagebox.showinfo("Info", "Blacklist system coming next update")
+
+
+if __name__ == "__main__":
+    app = App()
+    app.mainloop()
