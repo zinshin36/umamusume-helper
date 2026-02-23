@@ -1,112 +1,100 @@
-import tkinter as tk
-from tkinter import ttk, messagebox
-from PIL import Image, ImageTk
-import os
 import json
 import threading
+import tkinter as tk
+from tkinter import ttk
+from pathlib import Path
+from PIL import Image, ImageTk
 import logging
 
-from utils.fetch import fetch_all_sites
-
-
-DATA_FILE = "data.json"
+from crawler import crawl_all
 
 
 class App(tk.Tk):
-    def __init__(self):
+
+    def __init__(self, base_dir: Path):
         super().__init__()
 
+        self.base_dir = base_dir
+        self.data_file = base_dir / "data" / "data.json"
+
         self.title("Umamusume Builder")
-        self.geometry("900x600")
+        self.geometry("1000x700")
 
         self.images_cache = []
 
         self.create_widgets()
-        self.load_data()
+        self.ensure_data_file()
 
     def create_widgets(self):
 
-        top_frame = tk.Frame(self)
-        top_frame.pack(pady=10)
+        top = tk.Frame(self)
+        top.pack(pady=10)
 
-        self.crawl_btn = tk.Button(top_frame, text="Crawl Wiki", command=self.start_crawl)
+        self.crawl_btn = tk.Button(top, text="Crawl Wiki", command=self.start_crawl)
         self.crawl_btn.pack(side="left", padx=5)
 
-        self.recommend_btn = tk.Button(top_frame, text="Recommend Support Cards", command=self.recommend_cards)
-        self.recommend_btn.pack(side="left", padx=5)
+        self.progress = ttk.Progressbar(self, length=400)
+        self.progress.pack(pady=5)
 
-        self.blacklist_btn = tk.Button(top_frame, text="Blacklist Card", command=self.blacklist_card)
-        self.blacklist_btn.pack(side="left", padx=5)
-
-        self.progress = ttk.Progressbar(self, mode="indeterminate")
-        self.progress.pack(fill="x", padx=20, pady=10)
+        self.status_label = tk.Label(self, text="Idle")
+        self.status_label.pack()
 
         self.canvas = tk.Canvas(self)
         self.canvas.pack(fill="both", expand=True)
 
-        self.scrollbar = tk.Scrollbar(self.canvas, orient="vertical")
+        self.scrollbar = tk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
         self.scrollbar.pack(side="right", fill="y")
 
         self.frame = tk.Frame(self.canvas)
         self.canvas.create_window((0, 0), window=self.frame, anchor="nw")
 
-        self.frame.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
-        self.scrollbar.config(command=self.canvas.yview)
+        self.frame.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
+
+    def ensure_data_file(self):
+        if not self.data_file.exists():
+            self.data_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.data_file, "w") as f:
+                json.dump({"horses": [], "cards": []}, f)
 
     def start_crawl(self):
-        threading.Thread(target=self.crawl).start()
+        threading.Thread(target=self.run_crawl, daemon=True).start()
 
-    def crawl(self):
-        self.progress.start()
+    def run_crawl(self):
         logging.info("Starting crawl")
+        data = crawl_all(self.base_dir, self.update_progress)
 
-        data = fetch_all_sites()
+        with open(self.data_file, "w") as f:
+            json.dump(data, f, indent=2)
 
-        with open(DATA_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4)
+        self.display_images(data)
 
-        self.progress.stop()
-        self.load_data()
+        self.update_progress(100, "Finished")
 
-        messagebox.showinfo("Done", "Crawl complete")
+    def update_progress(self, percent, message):
+        self.progress["value"] = percent
+        self.status_label.config(text=message)
+        self.update_idletasks()
 
-    def load_data(self):
-        if not os.path.exists(DATA_FILE):
-            return
-
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        for widget in self.frame.winfo_children():
-            widget.destroy()
+    def display_images(self, data):
+        for w in self.frame.winfo_children():
+            w.destroy()
 
         self.images_cache.clear()
 
-        horses = data.get("horses", [])
+        items = data["horses"][:10] + data["cards"][:10]
 
-        for item in horses[:50]:  # limit to avoid overload
-            path = item.get("image")
-
-            if not os.path.exists(path):
+        for item in items:
+            img_path = Path(item["image"])
+            if not img_path.exists():
                 continue
 
-            img = Image.open(path)
-            img = img.resize((100, 100))
+            img = Image.open(img_path)
+            img = img.resize((120, 120))
             photo = ImageTk.PhotoImage(img)
 
+            lbl = tk.Label(self.frame, image=photo, text=item["name"], compound="top")
+            lbl.image = photo
+            lbl.pack(side="left", padx=10, pady=10)
+
             self.images_cache.append(photo)
-
-            label = tk.Label(self.frame, image=photo, text=item["name"], compound="top")
-            label.pack(side="left", padx=10, pady=10)
-
-    def recommend_cards(self):
-        messagebox.showinfo("Info", "Recommendation system coming next update")
-
-    def blacklist_card(self):
-        messagebox.showinfo("Info", "Blacklist system coming next update")
-
-
-if __name__ == "__main__":
-    app = App()
-    app.mainloop()
