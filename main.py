@@ -1,46 +1,52 @@
 import tkinter as tk
+from tkinter import ttk
 import threading
-import logging
-from utils.fetch import fetch_all_data  # ✅ FIXED IMPORT
 
-logging.basicConfig(level=logging.INFO)
+from utils.fetch import fetch_all_sites
+from utils.logger import logger
 
 
 class App:
+
     def __init__(self, root):
         self.root = root
-        self.root.title("Uma Musume Data Fetcher")
-        self.root.geometry("500x200")
+        self.root.title("Uma Crawler")
 
-        self.status_label = tk.Label(root, text="Idle", font=("Arial", 12))
-        self.status_label.pack(pady=10)
+        self.status_label = tk.Label(root, text="Ready")
+        self.status_label.pack(pady=5)
 
-        self.result_label = tk.Label(root, text="", font=("Arial", 12))
-        self.result_label.pack(pady=10)
+        self.progress = ttk.Progressbar(root, length=400)
+        self.progress.pack(pady=5)
 
-        self.fetch_button = tk.Button(root, text="Start Crawl", command=self.start_fetch)
-        self.fetch_button.pack(pady=10)
+        self.button = tk.Button(root, text="Start Crawl", command=self.start_crawl)
+        self.button.pack(pady=10)
 
     def update_progress(self, message):
         self.status_label.config(text=message)
+
+        # Extract percent if present
+        if "%" in message:
+            percent = int(message.split("%")[0].split()[-1])
+            self.progress["value"] = percent
+
         self.root.update_idletasks()
 
-    def start_fetch(self):
-        self.fetch_button.config(state="disabled")
-        thread = threading.Thread(target=self.run_fetch)
+    def start_crawl(self):
+        thread = threading.Thread(target=self.run_crawl)
         thread.start()
 
-    def run_fetch(self):
-        horses, cards = fetch_all_data(progress_callback=self.update_progress)
+    def run_crawl(self):
+        logger.info("Starting crawl")
 
-        self.status_label.config(text="Crawl Complete")
-        self.result_label.config(
-            text=f"Horses: {len(horses)} | Cards: {len(cards)}"
-        )
-        self.fetch_button.config(state="normal")
+        horses, cards = fetch_all_sites(progress_callback=self.update_progress)
+
+        logger.info("Crawl complete")
+        logger.info(f"Horses: {len(horses)}")
+        logger.info(f"Cards: {len(cards)}")
+
+        self.update_progress("Crawl complete")
 
 
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = App(root)
-    root.mainloop()
+root = tk.Tk()
+app = App(root)
+root.mainloop()
