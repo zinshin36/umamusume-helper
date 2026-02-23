@@ -1,5 +1,5 @@
 import requests
-import os
+import logging
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from utils.storage import (
@@ -11,116 +11,95 @@ from utils.storage import (
     SUPPORT_IMG_DIR
 )
 
-VALID_CARD_TIERS = ["SSR", "SR", "R"]
+
+BASE_URL = "https://umamusu.wiki"
 
 
-def is_valid_name(name):
-    if not name:
-        return False
-    name = name.strip()
-    if name.lower() in ["umamusumedb", "logo", "home"]:
-        return False
-    if len(name) < 3:
-        return False
-    return True
-
-
-def download_image(url, save_dir, name):
+def download_image(url, save_path):
     try:
-        if not url.startswith("http"):
-            return None
-
-        filename = name.replace(" ", "_").replace("/", "_")
-        path = os.path.join(save_dir, f"{filename}.png")
-
-        if os.path.exists(path):
-            return path
-
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
-            with open(path, "wb") as f:
+            with open(save_path, "wb") as f:
                 f.write(response.content)
-            return path
-    except:
-        return None
+            return True
+    except Exception as e:
+        logging.error(f"Image download failed: {e}")
+    return False
 
 
-def fetch_umamusu_wiki(progress_callback=None):
-    horses = []
-    cards = []
+def parse_table(url, save_dir, entry_type, progress_callback):
+    logging.info(f"Parsing {entry_type} from {url}")
 
-    base = "https://umamusu.wiki"
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, "html.parser")
 
-    pages = [
-        ("Horses", "https://umamusu.wiki/Game:List_of_Trainees"),
-        ("Support", "https://umamusu.wiki/Game:List_of_Support_Cards"),
-    ]
+    table = soup.find("table")
+    if not table:
+        logging.warning(f"No table found at {url}")
+        return []
 
-    total_pages = len(pages)
+    rows = table.find_all("tr")[1:]  # skip header
 
-    for index, (label, url) in enumerate(pages):
+    entries = []
+    total = len(rows)
+
+    for i, row in enumerate(rows):
+        cells = row.find_all("td")
+        if not cells:
+            continue
+
+        name_cell = cells[0]
+        name = name_cell.get_text(strip=True)
+
+        if not name or len(name) < 2:
+            continue
+
+        img_tag = name_cell.find("img")
+        if not img_tag:
+            continue
+
+        img_url = img_tag.get("src")
+        if not img_url:
+            continue
+
+        img_url = urljoin(BASE_URL, img_url)
+        filename = name.replace(" ", "_").replace("/", "_") + ".png"
+        save_path = f"{save_dir}/{filename}"
+
+        if download_image(img_url, save_path):
+            entries.append({
+                "name": name,
+                "image": save_path,
+                "source": "umamusu_wiki"
+            })
+
         if progress_callback:
-            percent = int((index / total_pages) * 100)
-            progress_callback(percent, f"Scanning {label} page...")
+            percent = int((i / total) * 100)
+            progress_callback(percent, f"Processing {entry_type}: {name}")
 
-        response = requests.get(url)
-        soup = BeautifulSoup(response.text, "html.parser")
-
-        for link in soup.find_all("a"):
-            name = link.get_text(strip=True)
-
-            if not is_valid_name(name):
-                continue
-
-            img = link.find("img")
-            if not img:
-                continue
-
-            img_url = img.get("src")
-            if not img_url:
-                continue
-
-            img_url = urljoin(base, img_url)
-
-            if label == "Horses":
-                path = download_image(img_url, HORSE_IMG_DIR, name)
-                if path:
-                    horses.append({
-                        "name": name,
-                        "image": path,
-                        "source": "umamusu_wiki"
-                    })
-
-            elif label == "Support":
-                if not any(tier in name for tier in VALID_CARD_TIERS):
-                    continue
-
-                path = download_image(img_url, SUPPORT_IMG_DIR, name)
-                if path:
-                    cards.append({
-                        "name": name,
-                        "image": path,
-                        "source": "umamusu_wiki"
-                    })
-
-    return horses, cards
+    return entries
 
 
 def fetch_all_sites(progress_callback=None):
     ensure_directories()
+    logging.info("Starting crawl")
+
     data = load_data()
 
-    horses, cards = fetch_umamusu_wiki(progress_callback)
+    horses_url = f"{BASE_URL}/Game:List_of_Trainees"
+    cards_url = f"{BASE_URL}/Game:List_of_Support_Cards"
 
-    data["horses"].extend(horses)
-    data["cards"].extend(cards)
+    horses = parse_table(horses_url, HORSE_IMG_DIR, "Horses", progress_callback)
+    cards = parse_table(cards_url, SUPPORT_IMG_DIR, "Support Cards", progress_callback)
 
-    data["horses"] = deduplicate(data["horses"])
-    data["cards"] = deduplicate(data["cards"])
+    data["horses"] = deduplicate(horses)
+    data["cards"] = deduplicate(cards)
 
     save_data(data)
+
+    logging.info(f"Crawl complete. Horses: {len(horses)} Cards: {len(cards)}")
 
     if progress_callback:
         progress_callback(100, "Crawl complete")
 
-    return len(data["horses"]), len(data["cards"])
+    return len(horses), len(cards)
