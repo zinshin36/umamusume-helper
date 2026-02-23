@@ -1,60 +1,52 @@
 import json
-import os
+import logging
+from pathlib import Path
 
-from utils.paths import DATA_DIR
-from utils.logger import logger
-from data_sources import (
-    umamusu_wiki,
-    umamusumedb,
-    umamusume_run,
-    gametora
+from data_sources.umamusumedb import fetch_all as fetch_umadb
+
+DATA_DIR = Path("data")
+DATA_FILE = DATA_DIR / "data.json"
+
+DATA_DIR.mkdir(exist_ok=True)
+(DATA_DIR / "images").mkdir(exist_ok=True)
+
+logging.basicConfig(
+    filename="logs/app.log",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
 
-def fetch_all_data(progress_callback=None):
+def fetch_all_sites(progress_callback=None):
 
-    all_horses = []
-    all_cards = []
+    logging.info("Starting crawl")
 
-    sources = [
-        ("Umamusu Wiki", umamusu_wiki.fetch_all),
-        ("UmamusumeDB", umamusumedb.fetch_all),
-        ("Umamusume Run", umamusume_run.fetch_all),
-        ("GameTora", gametora.fetch_all),
-    ]
+    horses = []
+    cards = []
 
-    total = len(sources)
+    # --- UMAMUSUMEDB ---
+    try:
+        h, c = fetch_umadb(progress_callback)
+        horses.extend(h)
+        cards.extend(c)
+        logging.info("UmamusumeDB fetched")
+    except Exception as e:
+        logging.error(f"UmamusumeDB failed: {e}")
 
-    for i, (name, func) in enumerate(sources, 1):
+    # Remove duplicates by name
+    horses = {h["name"]: h for h in horses}.values()
+    cards = {c["name"]: c for c in cards}.values()
 
-        if progress_callback:
-            percent = int((i - 1) / total * 100)
-            progress_callback(f"{name} — {percent}%")
-
-        try:
-            horses, cards = func(progress_callback)
-            all_horses.extend(horses)
-            all_cards.extend(cards)
-            logger.info(f"{name} fetched")
-        except Exception as e:
-            logger.error(f"{name} failed: {e}")
-
-    # Deduplicate
-    unique_horses = {h["name"].lower(): h for h in all_horses if h.get("name")}
-    unique_cards = {c["name"].lower(): c for c in all_cards if c.get("name")}
-
-    output = {
-        "horses": list(unique_horses.values()),
-        "cards": list(unique_cards.values())
+    data = {
+        "horses": list(horses),
+        "cards": list(cards),
+        "blacklist": [],
+        "last_updated": None
     }
 
-    output_path = os.path.join(DATA_DIR, "data.json")
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(output, f, indent=2, ensure_ascii=False)
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
 
-    if progress_callback:
-        progress_callback("Complete — 100%")
+    logging.info("Data saved")
 
-    logger.info("Data saved")
-
-    return output["horses"], output["cards"]
+    return len(data["horses"]), len(data["cards"])
