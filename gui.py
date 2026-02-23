@@ -18,7 +18,7 @@ class App(tk.Tk):
         self.data_file = base_dir / "data" / "data.json"
 
         self.title("Umamusume Builder")
-        self.geometry("1000x700")
+        self.geometry("1100x700")
 
         self.images_cache = []
 
@@ -33,10 +33,10 @@ class App(tk.Tk):
         self.crawl_btn = tk.Button(top, text="Crawl Wiki", command=self.start_crawl)
         self.crawl_btn.pack(side="left", padx=5)
 
-        self.progress = ttk.Progressbar(self, length=400)
+        self.progress = ttk.Progressbar(self, length=500)
         self.progress.pack(pady=5)
 
-        self.status_label = tk.Label(self, text="Idle")
+        self.status_label = tk.Label(self, text="Idle", font=("Arial", 12))
         self.status_label.pack()
 
         self.canvas = tk.Canvas(self)
@@ -58,6 +58,7 @@ class App(tk.Tk):
                 json.dump({"horses": [], "cards": []}, f)
 
     def start_crawl(self):
+        self.crawl_btn.config(state="disabled")
         threading.Thread(target=self.run_crawl, daemon=True).start()
 
     def run_crawl(self):
@@ -70,6 +71,7 @@ class App(tk.Tk):
         self.display_images(data)
 
         self.update_progress(100, "Finished")
+        self.crawl_btn.config(state="normal")
 
     def update_progress(self, percent, message):
         self.progress["value"] = percent
@@ -82,7 +84,10 @@ class App(tk.Tk):
 
         self.images_cache.clear()
 
-        items = data["horses"][:10] + data["cards"][:10]
+        items = data["horses"] + data["cards"]
+
+        row = 0
+        col = 0
 
         for item in items:
             img_path = Path(item["image"])
@@ -95,6 +100,11 @@ class App(tk.Tk):
 
             lbl = tk.Label(self.frame, image=photo, text=item["name"], compound="top")
             lbl.image = photo
-            lbl.pack(side="left", padx=10, pady=10)
+            lbl.grid(row=row, column=col, padx=10, pady=10)
 
             self.images_cache.append(photo)
+
+            col += 1
+            if col == 6:
+                col = 0
+                row += 1
