@@ -1,7 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin
-import html
+from pathlib import Path
+import os
 
 BASE = "https://umamusumedb.com"
 SITEMAP = BASE + "/sitemap-0.xml"
@@ -10,111 +10,122 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0"
 }
 
-
-def clean_title(title):
-    title = html.unescape(title)
-    if "|" in title:
-        title = title.split("|")[0].strip()
-    return title
+IMAGE_DIR = Path("data/images")
+IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def extract_image(soup):
-    # Use og:image (correct structured image)
-    meta = soup.find("meta", property="og:image")
-    if not meta:
-        return None
+def download_image(url, name):
+    try:
+        filename = name.replace(" ", "_").replace("/", "_") + ".png"
+        path = IMAGE_DIR / filename
 
-    url = meta.get("content")
-    if not url:
-        return None
+        if path.exists():
+            return str(path)
 
-    if "og-image.png" in url:
-        return None
+        r = requests.get(url, headers=HEADERS, timeout=20)
+        if r.status_code == 200:
+            with open(path, "wb") as f:
+                f.write(r.content)
+            return str(path)
+    except:
+        pass
 
-    return url
+    return None
+
+
+def clean_name(name):
+    if " - " in name:
+        name = name.split(" - ")[0]
+    if "|" in name:
+        name = name.split("|")[0]
+    return name.strip()
 
 
 def fetch_all(progress_callback=None):
 
-    response = requests.get(SITEMAP, headers=HEADERS, timeout=20)
-    response.raise_for_status()
-
-    soup = BeautifulSoup(response.text, "xml")
-    urls = [loc.text for loc in soup.find_all("loc")]
-
     horses = []
     cards = []
 
-    # Filter only structured URLs
+    response = requests.get(SITEMAP, headers=HEADERS, timeout=20)
+    soup = BeautifulSoup(response.text, "xml")
+    urls = [loc.text for loc in soup.find_all("loc")]
+
+    # REMOVE JAPANESE DUPLICATES
+    urls = [u for u in urls if "/ja/" not in u]
+
     character_urls = [u for u in urls if "/characters/" in u]
-    support_urls = [u for u in urls if "/support/" in u]
+    support_urls = [u for u in urls if "/support-cards/" in u]
 
     total = len(character_urls) + len(support_urls)
     processed = 0
 
-    # ---- CHARACTERS ----
+    # ---------- HORSES ----------
     for url in character_urls:
         processed += 1
 
         if progress_callback:
-            percent = int((processed / total) * 100)
-            progress_callback(f"UmamusumeDB — {percent}%")
+            progress_callback(
+                f"UmamusumeDB {int((processed/total)*100)}%"
+            )
 
         try:
             r = requests.get(url, headers=HEADERS, timeout=20)
-            r.raise_for_status()
+            page = BeautifulSoup(r.text, "lxml")
         except:
             continue
 
-        page = BeautifulSoup(r.text, "lxml")
+        meta_title = page.find("meta", property="og:title")
+        meta_img = page.find("meta", property="og:image")
 
-        title_tag = page.find("meta", property="og:title")
-        if not title_tag:
+        if not meta_title or not meta_img:
             continue
 
-        name = clean_title(title_tag.get("content", ""))
+        name = clean_name(meta_title["content"])
+        img_url = meta_img["content"]
 
-        image = extract_image(page)
-
-        if not name:
+        if not name or "Characters" in name:
             continue
+
+        local_img = download_image(img_url, name)
 
         horses.append({
             "name": name,
-            "image": image,
+            "image": local_img,
             "source": "umamusumedb"
         })
 
-    # ---- SUPPORT CARDS ----
+    # ---------- SUPPORT CARDS ----------
     for url in support_urls:
         processed += 1
 
         if progress_callback:
-            percent = int((processed / total) * 100)
-            progress_callback(f"UmamusumeDB — {percent}%")
+            progress_callback(
+                f"UmamusumeDB {int((processed/total)*100)}%"
+            )
 
         try:
             r = requests.get(url, headers=HEADERS, timeout=20)
-            r.raise_for_status()
+            page = BeautifulSoup(r.text, "lxml")
         except:
             continue
 
-        page = BeautifulSoup(r.text, "lxml")
+        meta_title = page.find("meta", property="og:title")
+        meta_img = page.find("meta", property="og:image")
 
-        title_tag = page.find("meta", property="og:title")
-        if not title_tag:
+        if not meta_title or not meta_img:
             continue
 
-        name = clean_title(title_tag.get("content", ""))
+        name = clean_name(meta_title["content"])
+        img_url = meta_img["content"]
 
-        image = extract_image(page)
-
-        if not name:
+        if not name or "Support Cards" in name:
             continue
+
+        local_img = download_image(img_url, name)
 
         cards.append({
             "name": name,
-            "image": image,
+            "image": local_img,
             "source": "umamusumedb"
         })
 
