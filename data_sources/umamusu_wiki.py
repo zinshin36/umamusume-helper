@@ -11,7 +11,26 @@ HEADERS = {
 }
 
 
-def parse_table(url, entry_type, progress_callback=None):
+def extract_image(img_tag):
+    if not img_tag:
+        return None
+
+    # prefer high quality
+    image_url = img_tag.get("data-src") or img_tag.get("src")
+
+    if not image_url:
+        return None
+
+    if image_url.startswith("//"):
+        image_url = "https:" + image_url
+
+    if image_url.startswith("/"):
+        image_url = urljoin(BASE, image_url)
+
+    return image_url
+
+
+def parse_tables(url, entry_type, progress_callback=None):
     response = requests.get(url, headers=HEADERS, timeout=20)
     response.raise_for_status()
 
@@ -19,13 +38,12 @@ def parse_table(url, entry_type, progress_callback=None):
     tables = soup.find_all("table")
 
     results = []
-
     total_tables = len(tables)
 
-    for index, table in enumerate(tables, 1):
+    for t_index, table in enumerate(tables, 1):
 
         if progress_callback:
-            percent = int((index / total_tables) * 100)
+            percent = int((t_index / total_tables) * 100)
             progress_callback(f"Umamusu Wiki ({entry_type}) — {percent}%")
 
         rows = table.find_all("tr")
@@ -35,37 +53,32 @@ def parse_table(url, entry_type, progress_callback=None):
             if not cols:
                 continue
 
-            name_cell = cols[0]
-            name = name_cell.get_text(strip=True)
+            name = cols[0].get_text(strip=True)
+            if not name or len(name) < 2:
+                continue
 
-            img_tag = name_cell.find("img")
-            image_url = None
+            img_tag = cols[0].find("img")
+            image_url = extract_image(img_tag)
 
-            if img_tag and img_tag.get("src"):
-                image_url = img_tag["src"]
-                if image_url.startswith("/"):
-                    image_url = urljoin(BASE, image_url)
-
-            if name:
-                results.append({
-                    "name": name,
-                    "image": image_url,
-                    "type": entry_type,
-                    "source": "umamusu_wiki"
-                })
+            results.append({
+                "name": name,
+                "image": image_url,
+                "type": entry_type,
+                "source": "umamusu_wiki"
+            })
 
     return results
 
 
 def fetch_all(progress_callback=None):
 
-    horses = parse_table(
+    horses = parse_tables(
         TRAINEES_URL,
         "character",
         progress_callback
     )
 
-    cards = parse_table(
+    cards = parse_tables(
         SUPPORT_URL,
         "support",
         progress_callback
