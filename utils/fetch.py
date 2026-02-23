@@ -1,5 +1,3 @@
-import logging
-from utils.dedupe import merge_unique
 from data_sources import (
     umamusu_wiki,
     umamusumedb,
@@ -26,22 +24,29 @@ def fetch_all_data(progress_callback=None):
 
         if progress_callback:
             percent = int((index - 1) / total_sources * 100)
-            progress_callback(f"Fetching from {name} — {percent}%")
+            progress_callback(f"{name} — {percent}%")
 
         try:
             horses, cards = fetch_func(progress_callback)
             all_horses.extend(horses)
             all_cards.extend(cards)
-        except Exception as e:
-            logging.warning(f"{name} failed: {e}")
+        except Exception:
+            continue
 
-    if progress_callback:
-        progress_callback("Deduplicating data — 95%")
+    # Deduplicate by name
+    unique_horses = {}
+    for h in all_horses:
+        key = h.get("name", "").strip().lower()
+        if key:
+            unique_horses[key] = h
 
-    all_horses = merge_unique(all_horses)
-    all_cards = merge_unique(all_cards)
+    unique_cards = {}
+    for c in all_cards:
+        key = c.get("name", "").strip().lower()
+        if key:
+            unique_cards[key] = c
 
     if progress_callback:
         progress_callback("Complete — 100%")
 
-    return all_horses, all_cards
+    return list(unique_horses.values()), list(unique_cards.values())
