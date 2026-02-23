@@ -1,7 +1,7 @@
 import tkinter as tk
 import threading
 import logging
-from fetch import fetch_all_data
+from utils.fetch import fetch_all_data  # ✅ FIXED IMPORT
 
 logging.basicConfig(level=logging.INFO)
 
@@ -34,7 +34,9 @@ class App:
         horses, cards = fetch_all_data(progress_callback=self.update_progress)
 
         self.status_label.config(text="Crawl Complete")
-        self.result_label.config(text=f"Horses: {len(horses)} | Cards: {len(cards)}")
+        self.result_label.config(
+            text=f"Horses: {len(horses)} | Cards: {len(cards)}"
+        )
         self.fetch_button.config(state="normal")
 
 
