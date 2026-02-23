@@ -1,30 +1,28 @@
 # main.py
 
-import os
 import sys
+import os
 import logging
 from pathlib import Path
 
 
 def get_base_path():
-    """
-    Ensures paths work in both normal python and PyInstaller exe.
-    """
     if getattr(sys, 'frozen', False):
         return Path(sys.executable).parent
     return Path(__file__).parent
 
 
-BASE_DIR = get_base_path()
-LOG_DIR = BASE_DIR / "logs"
-DATA_DIR = BASE_DIR / "data"
-IMAGE_HORSE_DIR = DATA_DIR / "images" / "horses"
-IMAGE_CARD_DIR = DATA_DIR / "images" / "support"
+BASE_PATH = get_base_path()
 
-# Always create folders
+DATA_DIR = BASE_PATH / "data"
+LOG_DIR = BASE_PATH / "logs"
+HORSE_IMG_DIR = DATA_DIR / "images" / "horses"
+CARD_IMG_DIR = DATA_DIR / "images" / "support"
+
+# Ensure directories exist
+HORSE_IMG_DIR.mkdir(parents=True, exist_ok=True)
+CARD_IMG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
-IMAGE_HORSE_DIR.mkdir(parents=True, exist_ok=True)
-IMAGE_CARD_DIR.mkdir(parents=True, exist_ok=True)
 
 LOG_FILE = LOG_DIR / "app.log"
 
@@ -39,5 +37,5 @@ logging.info("Application started")
 from gui import UmamusumeGUI
 
 if __name__ == "__main__":
-    app = UmamusumeGUI(base_path=BASE_DIR)
+    app = UmamusumeGUI(BASE_PATH)
     app.run()
