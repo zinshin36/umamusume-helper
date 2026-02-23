@@ -1,18 +1,37 @@
 import os
 import json
+import logging
 from datetime import datetime
 
-DATA_DIR = "data"
+BASE_DIR = os.getcwd()
+
+DATA_DIR = os.path.join(BASE_DIR, "data")
 IMAGE_DIR = os.path.join(DATA_DIR, "images")
 HORSE_IMG_DIR = os.path.join(IMAGE_DIR, "horses")
 SUPPORT_IMG_DIR = os.path.join(IMAGE_DIR, "support")
+LOG_DIR = os.path.join(BASE_DIR, "logs")
 
 DATA_FILE = os.path.join(DATA_DIR, "data.json")
+LOG_FILE = os.path.join(LOG_DIR, "app.log")
 
 
 def ensure_directories():
+    os.makedirs(DATA_DIR, exist_ok=True)
     os.makedirs(HORSE_IMG_DIR, exist_ok=True)
     os.makedirs(SUPPORT_IMG_DIR, exist_ok=True)
+    os.makedirs(LOG_DIR, exist_ok=True)
+
+
+def setup_logging():
+    ensure_directories()
+
+    logging.basicConfig(
+        filename=LOG_FILE,
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s"
+    )
+
+    logging.info("Application started")
 
 
 def load_data():
@@ -37,13 +56,12 @@ def save_data(data):
 
 def deduplicate(entries):
     seen = set()
-    result = []
+    unique = []
 
     for item in entries:
-        name = item["name"].strip()
-        if name.lower() in seen:
-            continue
-        seen.add(name.lower())
-        result.append(item)
+        key = item["name"].lower().strip()
+        if key not in seen:
+            seen.add(key)
+            unique.append(item)
 
-    return result
+    return unique
