@@ -1,20 +1,24 @@
-from bs4 import BeautifulSoup
-from urllib.parse import urljoin
-from utils.crawler import SafeCrawler
+import requests
+import xml.etree.ElementTree as ET
 
 BASE = "https://umamusumedb.com"
 SITEMAP = BASE + "/sitemap-0.xml"
 
+HEADERS = {
+    "User-Agent": "Mozilla/5.0"
+}
+
 
 def fetch_all(progress_callback=None):
-    crawler = SafeCrawler(BASE, progress_callback, "umamusumedb")
 
-    sitemap_xml = crawler.get(SITEMAP)
-    if not sitemap_xml:
-        return [], []
+    response = requests.get(SITEMAP, headers=HEADERS, timeout=20)
+    root = ET.fromstring(response.content)
 
-    soup = BeautifulSoup(sitemap_xml, "xml")
-    urls = [loc.text for loc in soup.find_all("loc")]
+    urls = [
+        loc.text for loc in root.iter("{http://www.sitemaps.org/schemas/sitemap/0.9}loc")
+        if "/characters/" in loc.text.lower()
+        or "/support" in loc.text.lower()
+    ]
 
     horses = []
     cards = []
@@ -22,44 +26,36 @@ def fetch_all(progress_callback=None):
     total = len(urls)
 
     for i, url in enumerate(urls, 1):
-        crawler.report_progress(i, total)
 
-        if "/api/" in url or "/admin/" in url:
-            continue
+        if progress_callback:
+            percent = int((i / total) * 100)
+            progress_callback(f"UmamusumeDB — {percent}%")
 
-        html = crawler.get(url)
-        if not html:
-            continue
+        response = requests.get(url, headers=HEADERS, timeout=20)
+        html = response.text
 
-        page = BeautifulSoup(html, "lxml")
-        title = page.find("h1")
+        title = extract_meta(html, "og:title")
+        image = extract_meta(html, "og:image")
 
-        if not title:
-            continue
+        entry = {
+            "name": title,
+            "image": image,
+            "source": "umamusumedb"
+        }
 
-        name = title.get_text(strip=True)
-
-        img = page.find("img")
-        image_url = None
-
-        if img and img.get("src"):
-            image_url = img["src"]
-            if image_url.startswith("/"):
-                image_url = urljoin(BASE, image_url)
-
-        if "support" in url.lower():
-            cards.append({
-                "name": name,
-                "image": image_url,
-                "type": "support",
-                "source": "umamusumedb"
-            })
+        if "/support" in url.lower():
+            cards.append(entry)
         else:
-            horses.append({
-                "name": name,
-                "image": image_url,
-                "type": "character",
-                "source": "umamusumedb"
-            })
+            horses.append(entry)
 
     return horses, cards
+
+
+def extract_meta(html, prop):
+    marker = f'property="{prop}" content="'
+    start = html.find(marker)
+    if start == -1:
+        return None
+    start += len(marker)
+    end = html.find('"', start)
+    return html[start:end]
