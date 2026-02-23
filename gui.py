@@ -12,9 +12,12 @@ class App:
 
         self.root = root
         root.title("Umamusume Builder")
+        root.geometry("500x600")
+
+        tk.Label(root, text="Umamusume Database Builder", font=("Arial", 16)).pack(pady=10)
 
         self.status_label = tk.Label(root, text="Ready")
-        self.status_label.pack(pady=5)
+        self.status_label.pack()
 
         self.progress = ttk.Progressbar(root, length=400)
         self.progress.pack(pady=5)
@@ -25,8 +28,7 @@ class App:
         self.image_label = tk.Label(root)
         self.image_label.pack(pady=10)
 
-        crawl_btn = tk.Button(root, text="Crawl", command=self.start_crawl)
-        crawl_btn.pack(pady=10)
+        tk.Button(root, text="Crawl Database", command=self.start_crawl, width=20).pack(pady=10)
 
         self.refresh_counts()
 
@@ -41,13 +43,14 @@ class App:
         cards = len(data["cards"])
         self.count_label.config(text=f"Horses: {horses} | Cards: {cards}")
 
-        if data["horses"]:
+        if horses > 0:
             img_path = data["horses"][0]["image"]
-            img = Image.open(img_path)
-            img = img.resize((128, 128))
-            photo = ImageTk.PhotoImage(img)
-            self.image_label.config(image=photo)
-            self.image_label.image = photo
+            if img_path and os.path.exists(img_path):
+                img = Image.open(img_path)
+                img = img.resize((200, 200))
+                photo = ImageTk.PhotoImage(img)
+                self.image_label.config(image=photo)
+                self.image_label.image = photo
 
     def start_crawl(self):
         horses, cards = fetch_all_sites(self.update_progress)
@@ -56,5 +59,5 @@ class App:
 
 def run():
     root = tk.Tk()
-    app = App(root)
+    App(root)
     root.mainloop()
