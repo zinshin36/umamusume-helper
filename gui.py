@@ -1,8 +1,8 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from PIL import Image, ImageTk
-import os
 import threading
+import os
 
 from data_manager import load_data, save_data
 from crawler import crawl_horses, crawl_support_cards
@@ -14,7 +14,7 @@ class UmaGui:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("Uma Musume Helper")
-        self.root.geometry("900x600")
+        self.root.geometry("1000x650")
 
         self.data = load_data()
         self.selected_horse = None
@@ -23,35 +23,43 @@ class UmaGui:
         self.build_ui()
 
     def build_ui(self):
-        left_frame = tk.Frame(self.root)
-        left_frame.pack(side="left", fill="y", padx=10, pady=10)
 
-        self.horse_list = tk.Listbox(left_frame, width=30)
+        left = tk.Frame(self.root)
+        left.pack(side="left", fill="y", padx=10, pady=10)
+
+        tk.Label(left, text="Horses").pack()
+
+        self.horse_list = tk.Listbox(left, width=30)
         self.horse_list.pack(fill="y")
 
-        for horse in self.data["horses"]:
-            self.horse_list.insert("end", horse["name"])
+        self.refresh_horse_list()
 
         self.horse_list.bind("<<ListboxSelect>>", self.on_horse_select)
 
-        right_frame = tk.Frame(self.root)
-        right_frame.pack(side="right", fill="both", expand=True)
+        right = tk.Frame(self.root)
+        right.pack(side="right", fill="both", expand=True)
 
-        self.image_label = tk.Label(right_frame)
+        self.image_label = tk.Label(right)
         self.image_label.pack(pady=10)
 
-        self.progress = ttk.Progressbar(right_frame, mode="indeterminate")
+        self.progress = ttk.Progressbar(right, mode="indeterminate")
         self.progress.pack(fill="x", pady=5)
 
-        button_frame = tk.Frame(right_frame)
+        button_frame = tk.Frame(right)
         button_frame.pack(pady=10)
 
+        tk.Button(button_frame, text="Crawl (Full Scan)", command=self.full_crawl).pack(side="left", padx=5)
         tk.Button(button_frame, text="Check Updates", command=self.check_updates).pack(side="left", padx=5)
         tk.Button(button_frame, text="Recommended Cards", command=self.show_recommendations).pack(side="left", padx=5)
         tk.Button(button_frame, text="Blacklist Selected Card", command=self.blacklist_card).pack(side="left", padx=5)
 
-        self.recommend_box = tk.Listbox(right_frame)
+        self.recommend_box = tk.Listbox(right)
         self.recommend_box.pack(fill="both", expand=True)
+
+    def refresh_horse_list(self):
+        self.horse_list.delete(0, "end")
+        for horse in self.data["horses"]:
+            self.horse_list.insert("end", horse["name"])
 
     def on_horse_select(self, event):
         selection = self.horse_list.curselection()
@@ -68,14 +76,27 @@ class UmaGui:
             self.image_cache = ImageTk.PhotoImage(img)
             self.image_label.config(image=self.image_cache)
 
+    def full_crawl(self):
+        def run():
+            self.progress.start()
+            crawl_horses(full_scan=True)
+            crawl_support_cards(full_scan=True)
+            self.data = load_data()
+            self.refresh_horse_list()
+            self.progress.stop()
+            messagebox.showinfo("Crawl Complete", "Full crawl finished.")
+
+        threading.Thread(target=run).start()
+
     def check_updates(self):
         def run():
             self.progress.start()
-            crawl_horses()
-            crawl_support_cards()
+            crawl_horses(full_scan=False)
+            crawl_support_cards(full_scan=False)
             self.data = load_data()
+            self.refresh_horse_list()
             self.progress.stop()
-            messagebox.showinfo("Update", "Update scan complete.")
+            messagebox.showinfo("Update Complete", "Update scan finished.")
 
         threading.Thread(target=run).start()
 
