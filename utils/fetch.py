@@ -1,3 +1,8 @@
+import json
+import os
+
+from utils.paths import DATA_DIR
+from utils.logger import logger
 from data_sources import (
     umamusu_wiki,
     umamusumedb,
@@ -18,35 +23,38 @@ def fetch_all_data(progress_callback=None):
         ("GameTora", gametora.fetch_all),
     ]
 
-    total_sources = len(sources)
+    total = len(sources)
 
-    for index, (name, fetch_func) in enumerate(sources, 1):
+    for i, (name, func) in enumerate(sources, 1):
 
         if progress_callback:
-            percent = int((index - 1) / total_sources * 100)
+            percent = int((i - 1) / total * 100)
             progress_callback(f"{name} — {percent}%")
 
         try:
-            horses, cards = fetch_func(progress_callback)
+            horses, cards = func(progress_callback)
             all_horses.extend(horses)
             all_cards.extend(cards)
-        except Exception:
-            continue
+            logger.info(f"{name} fetched")
+        except Exception as e:
+            logger.error(f"{name} failed: {e}")
 
-    # Deduplicate by name
-    unique_horses = {}
-    for h in all_horses:
-        key = h.get("name", "").strip().lower()
-        if key:
-            unique_horses[key] = h
+    # Deduplicate
+    unique_horses = {h["name"].lower(): h for h in all_horses if h.get("name")}
+    unique_cards = {c["name"].lower(): c for c in all_cards if c.get("name")}
 
-    unique_cards = {}
-    for c in all_cards:
-        key = c.get("name", "").strip().lower()
-        if key:
-            unique_cards[key] = c
+    output = {
+        "horses": list(unique_horses.values()),
+        "cards": list(unique_cards.values())
+    }
+
+    output_path = os.path.join(DATA_DIR, "data.json")
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(output, f, indent=2, ensure_ascii=False)
 
     if progress_callback:
         progress_callback("Complete — 100%")
 
-    return list(unique_horses.values()), list(unique_cards.values())
+    logger.info("Data saved")
+
+    return output["horses"], output["cards"]
