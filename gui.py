@@ -1,166 +1,108 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from PIL import Image, ImageTk
-import json
 import os
-from datetime import datetime
+import threading
 
-from utils.fetch import fetch_all_sites
+from data_manager import load_data, save_data
+from crawler import crawl_horses, crawl_support_cards
+from recommender import recommend_cards
 
-DATA_FILE = "data/data.json"
 
-
-class App(tk.Tk):
+class UmaGui:
 
     def __init__(self):
-        super().__init__()
-        self.title("Uma Manager")
-        self.geometry("1200x800")
+        self.root = tk.Tk()
+        self.root.title("Uma Musume Helper")
+        self.root.geometry("900x600")
 
-        self.horses = []
-        self.cards = []
-        self.blacklist = []
+        self.data = load_data()
+        self.selected_horse = None
+        self.image_cache = None
 
-        self.create_widgets()
-        self.load_data()
+        self.build_ui()
 
-    # ================= UI =================
+    def build_ui(self):
+        left_frame = tk.Frame(self.root)
+        left_frame.pack(side="left", fill="y", padx=10, pady=10)
 
-    def create_widgets(self):
+        self.horse_list = tk.Listbox(left_frame, width=30)
+        self.horse_list.pack(fill="y")
 
-        top = tk.Frame(self)
-        top.pack(fill="x")
+        for horse in self.data["horses"]:
+            self.horse_list.insert("end", horse["name"])
 
-        self.progress = ttk.Progressbar(top, length=200)
-        self.progress.pack(side="left", padx=10)
+        self.horse_list.bind("<<ListboxSelect>>", self.on_horse_select)
 
-        self.status_label = tk.Label(top, text="Ready")
-        self.status_label.pack(side="left", padx=10)
+        right_frame = tk.Frame(self.root)
+        right_frame.pack(side="right", fill="both", expand=True)
 
-        tk.Button(top, text="Crawl", command=self.start_crawl).pack(side="right", padx=5)
-        tk.Button(top, text="Recommend Cards", command=self.recommend_cards).pack(side="right", padx=5)
-        tk.Button(top, text="Check Updates", command=self.check_updates).pack(side="right", padx=5)
+        self.image_label = tk.Label(right_frame)
+        self.image_label.pack(pady=10)
 
-        self.horse_label = tk.Label(top, text="Horses: 0")
-        self.horse_label.pack(side="left", padx=10)
+        self.progress = ttk.Progressbar(right_frame, mode="indeterminate")
+        self.progress.pack(fill="x", pady=5)
 
-        self.card_label = tk.Label(top, text="Support Cards: 0")
-        self.card_label.pack(side="left", padx=10)
+        button_frame = tk.Frame(right_frame)
+        button_frame.pack(pady=10)
 
-        self.canvas = tk.Canvas(self)
-        self.scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
-        self.scroll_frame = tk.Frame(self.canvas)
+        tk.Button(button_frame, text="Check Updates", command=self.check_updates).pack(side="left", padx=5)
+        tk.Button(button_frame, text="Recommended Cards", command=self.show_recommendations).pack(side="left", padx=5)
+        tk.Button(button_frame, text="Blacklist Selected Card", command=self.blacklist_card).pack(side="left", padx=5)
 
-        self.scroll_frame.bind(
-            "<Configure>",
-            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-        )
+        self.recommend_box = tk.Listbox(right_frame)
+        self.recommend_box.pack(fill="both", expand=True)
 
-        self.canvas.create_window((0, 0), window=self.scroll_frame, anchor="nw")
-        self.canvas.configure(yscrollcommand=self.scrollbar.set)
-
-        self.canvas.pack(side="left", fill="both", expand=True)
-        self.scrollbar.pack(side="right", fill="y")
-
-    # ================= DATA =================
-
-    def load_data(self):
-
-        if not os.path.exists(DATA_FILE):
+    def on_horse_select(self, event):
+        selection = self.horse_list.curselection()
+        if not selection:
             return
 
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        index = selection[0]
+        self.selected_horse = self.data["horses"][index]
 
-        self.horses = data.get("horses", [])
-        self.cards = data.get("cards", [])
-        self.blacklist = data.get("blacklist", [])
-
-        self.horse_label.config(text=f"Horses: {len(self.horses)}")
-        self.card_label.config(text=f"Support Cards: {len(self.cards)}")
-
-        self.display_items(self.horses)
-
-    # ================= CRAWL =================
-
-    def start_crawl(self):
-
-        self.progress["value"] = 0
-        self.status_label.config(text="Crawling...")
-
-        def progress_callback(text):
-            percent = int(text.split("%")[0].split()[-1])
-            self.progress["value"] = percent
-            self.status_label.config(text=text)
-            self.update_idletasks()
-
-        horses, cards = fetch_all_sites(progress_callback)
-
-        self.status_label.config(text="Crawl Complete")
-        self.progress["value"] = 100
-
-        self.load_data()
-
-        messagebox.showinfo("Done", f"{horses} horses\n{cards} cards")
-
-    # ================= DISPLAY =================
-
-    def display_items(self, items):
-
-        for w in self.scroll_frame.winfo_children():
-            w.destroy()
-
-        self.images = []
-        cols = 5
-        row = 0
-        col = 0
-
-        for item in items:
-
-            if not item.get("image"):
-                continue
-
-            try:
-                img = Image.open(item["image"])
-                img = img.resize((150, 200))
-                photo = ImageTk.PhotoImage(img)
-                self.images.append(photo)
-
-                frame = tk.Frame(self.scroll_frame)
-                frame.grid(row=row, column=col, padx=10, pady=10)
-
-                tk.Label(frame, image=photo).pack()
-                tk.Label(frame, text=item["name"], wraplength=150).pack()
-
-                col += 1
-                if col >= cols:
-                    col = 0
-                    row += 1
-
-            except:
-                continue
-
-    # ================= RECOMMEND =================
-
-    def recommend_cards(self):
-
-        filtered = [c for c in self.cards if c["name"] not in self.blacklist]
-        self.display_items(filtered)
-
-    # ================= UPDATE CHECK =================
+        image_path = self.selected_horse["image"]
+        if os.path.exists(image_path):
+            img = Image.open(image_path)
+            img = img.resize((200, 200))
+            self.image_cache = ImageTk.PhotoImage(img)
+            self.image_label.config(image=self.image_cache)
 
     def check_updates(self):
+        def run():
+            self.progress.start()
+            crawl_horses()
+            crawl_support_cards()
+            self.data = load_data()
+            self.progress.stop()
+            messagebox.showinfo("Update", "Update scan complete.")
 
-        self.status_label.config(text="Checking for updates...")
-        self.update_idletasks()
+        threading.Thread(target=run).start()
 
-        # Simple: just re-crawl and compare count
-        old_count = len(self.cards)
-        horses, cards = fetch_all_sites()
+    def show_recommendations(self):
+        if not self.selected_horse:
+            messagebox.showwarning("Select Horse", "Please select a horse first.")
+            return
 
-        if cards > old_count:
-            messagebox.showinfo("Update Found", "New support cards detected!")
-        else:
-            messagebox.showinfo("No Updates", "No new cards found.")
+        self.recommend_box.delete(0, "end")
 
-        self.load_data()
+        recommendations = recommend_cards(self.selected_horse["name"], self.data)
+
+        for card in recommendations:
+            self.recommend_box.insert("end", card["name"])
+
+    def blacklist_card(self):
+        selection = self.recommend_box.curselection()
+        if not selection:
+            return
+
+        card_name = self.recommend_box.get(selection[0])
+
+        if card_name not in self.data["blacklist"]:
+            self.data["blacklist"].append(card_name)
+            save_data(self.data)
+
+        messagebox.showinfo("Blacklisted", f"{card_name} added to blacklist.")
+
+    def run(self):
+        self.root.mainloop()
