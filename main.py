@@ -1,11 +1,11 @@
 from pathlib import Path
 import logging
 
-from gui import App
-
-Path("data/images").mkdir(parents=True, exist_ok=True)
+# CREATE FOLDERS FIRST
 Path("logs").mkdir(parents=True, exist_ok=True)
+Path("data/images").mkdir(parents=True, exist_ok=True)
 
+# THEN CONFIGURE LOGGING
 logging.basicConfig(
     filename="logs/app.log",
     level=logging.INFO,
@@ -13,6 +13,9 @@ logging.basicConfig(
 )
 
 logging.info("Application started")
+
+from gui import App  # Import AFTER logging setup
+
 
 if __name__ == "__main__":
     app = App()
