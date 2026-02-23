@@ -52,16 +52,3 @@ def save_data(data):
 
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
-
-
-def deduplicate(entries):
-    seen = set()
-    unique = []
-
-    for item in entries:
-        key = item["name"].lower().strip()
-        if key not in seen:
-            seen.add(key)
-            unique.append(item)
-
-    return unique
