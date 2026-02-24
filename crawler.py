@@ -52,35 +52,36 @@ def crawl(progress_callback=None, status_callback=None):
 
     logging.info("Starting API crawl")
 
-    # ---------------- HORSES ----------------
+    # ---------------- CHARACTERS ----------------
+
     if status_callback:
-        status_callback("Fetching characters...")
+        status_callback("Fetching character list...")
 
-    char_list = safe_json(f"{BASE}/chara")
+    char_response = safe_json(f"{BASE}/character")
 
-    if not isinstance(char_list, list):
-        logging.error("Chara endpoint unexpected structure.")
+    if not char_response or "data" not in char_response:
+        logging.error("Character endpoint returned unexpected structure.")
         return
 
+    char_list = char_response["data"]
     total_chars = len(char_list)
 
     for i, c in enumerate(char_list):
 
-        chara_id = c.get("chara_id")
+        char_id = c.get("id")
         name = c.get("name_en") or c.get("name")
 
-        if not chara_id or not name:
+        if not char_id or not name:
             continue
 
-        # Umapyoi icon endpoint
-        img_url = f"https://umapyoi.net/icon/chara/{chara_id}.png"
-        img_path = HORSE_DIR / f"{chara_id}.png"
+        img_url = f"https://umapyoi.net/icon/character/{char_id}.png"
+        img_path = HORSE_DIR / f"{char_id}.png"
 
         if not img_path.exists():
             download_image(img_url, img_path)
 
         horses.append({
-            "id": chara_id,
+            "id": char_id,
             "name": name,
             "image": str(img_path)
         })
@@ -89,15 +90,17 @@ def crawl(progress_callback=None, status_callback=None):
             progress_callback("Characters", i + 1, total_chars)
 
     # ---------------- SUPPORT CARDS ----------------
+
     if status_callback:
-        status_callback("Fetching support cards...")
+        status_callback("Fetching support list...")
 
-    support_list = safe_json(f"{BASE}/support")
+    support_response = safe_json(f"{BASE}/support")
 
-    if not isinstance(support_list, list):
-        logging.error("Support endpoint unexpected structure.")
+    if not support_response or "data" not in support_response:
+        logging.error("Support endpoint returned unexpected structure.")
         return
 
+    support_list = support_response["data"]
     total_support = len(support_list)
 
     for i, s in enumerate(support_list):
