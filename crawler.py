@@ -35,28 +35,14 @@ def safe_json(url):
         return None
 
 
-def normalize_list(data):
-    """
-    Umapyoi sometimes returns:
-    { "data": [...] }
-    or directly [...]
-    """
-    if isinstance(data, list):
-        return data
-    if isinstance(data, dict):
-        if "data" in data and isinstance(data["data"], list):
-            return data["data"]
-    return []
-
-
 def download_image(url, path):
     try:
         r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
         if r.status_code == 200:
             with open(path, "wb") as f:
                 f.write(r.content)
-    except:
-        pass
+    except Exception as e:
+        logging.error(f"Image download failed: {url} | {e}")
 
 
 def crawl(progress_callback=None, status_callback=None):
@@ -66,36 +52,35 @@ def crawl(progress_callback=None, status_callback=None):
 
     logging.info("Starting API crawl")
 
-    # ---------------- CHARACTERS ----------------
-
+    # ---------------- HORSES ----------------
     if status_callback:
-        status_callback("Fetching character list...")
+        status_callback("Fetching characters...")
 
-    raw_chars = safe_json(f"{BASE}/character")
-    char_list = normalize_list(raw_chars)
+    char_list = safe_json(f"{BASE}/chara")
 
-    if not char_list:
-        logging.error(f"Character structure unexpected: {type(raw_chars)}")
+    if not isinstance(char_list, list):
+        logging.error("Chara endpoint unexpected structure.")
         return
 
     total_chars = len(char_list)
 
     for i, c in enumerate(char_list):
 
-        cid = c.get("id") or c.get("chara_id")
-        if not cid:
+        chara_id = c.get("chara_id")
+        name = c.get("name_en") or c.get("name")
+
+        if not chara_id or not name:
             continue
 
-        name = c.get("name_en") or c.get("name") or "Unknown"
-        img_url = c.get("image_url")
+        # Umapyoi icon endpoint
+        img_url = f"https://umapyoi.net/icon/chara/{chara_id}.png"
+        img_path = HORSE_DIR / f"{chara_id}.png"
 
-        img_path = HORSE_DIR / f"{cid}.png"
-
-        if img_url and not img_path.exists():
+        if not img_path.exists():
             download_image(img_url, img_path)
 
         horses.append({
-            "id": cid,
+            "id": chara_id,
             "name": name,
             "image": str(img_path)
         })
@@ -103,44 +88,39 @@ def crawl(progress_callback=None, status_callback=None):
         if progress_callback:
             progress_callback("Characters", i + 1, total_chars)
 
-    # ---------------- SUPPORT LIST ----------------
-
+    # ---------------- SUPPORT CARDS ----------------
     if status_callback:
-        status_callback("Fetching support list...")
+        status_callback("Fetching support cards...")
 
-    raw_support = safe_json(f"{BASE}/support")
-    support_list = normalize_list(raw_support)
+    support_list = safe_json(f"{BASE}/support")
 
-    if not support_list:
-        logging.error(f"Support structure unexpected: {type(raw_support)}")
+    if not isinstance(support_list, list):
+        logging.error("Support endpoint unexpected structure.")
         return
 
     total_support = len(support_list)
 
     for i, s in enumerate(support_list):
 
-        sid = s.get("id") or s.get("support_id")
-        if not sid:
+        support_id = s.get("id")
+        name = s.get("name_en") or s.get("name")
+        support_type = s.get("type")
+
+        if not support_id or not name:
             continue
 
-        detail = safe_json(f"{BASE}/support/{sid}")
-        if not detail:
-            continue
+        img_url = f"https://umapyoi.net/icon/support/{support_id}.png"
+        img_path = SUPPORT_DIR / f"{support_id}.png"
 
-        name = detail.get("name_en") or detail.get("name") or "Unknown"
-        img_url = detail.get("image_url")
-
-        img_path = SUPPORT_DIR / f"{sid}.png"
-
-        if img_url and not img_path.exists():
+        if not img_path.exists():
             download_image(img_url, img_path)
 
         cards.append({
-            "id": sid,
+            "id": support_id,
             "name": name,
             "image": str(img_path),
-            "type": detail.get("type"),
-            "stats": detail.get("stats", {}),
+            "type": support_type,
+            "stats": s.get("stats", {}),
             "stars": 0,
             "blacklisted": False
         })
