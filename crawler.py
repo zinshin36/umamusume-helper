@@ -45,39 +45,31 @@ def download(url, path):
 def crawl(progress=None, status=None):
 
     logging.info("Starting API crawl")
+    if status:
+        status("Starting crawl...")
 
     horses = []
     cards = []
-
-    # =======================
-    # CHARACTERS
-    # =======================
 
     char_list = get_json(f"{BASE}/character/list")
     if not char_list:
         logging.error("Character list failed.")
         return
 
-    total = len(char_list)
+    total_chars = len(char_list)
+    total_support = 0
 
     for i, c in enumerate(char_list):
         cid = c["id"]
         name = c.get("name_en") or c.get("name")
 
         img_api = get_json(f"{BASE}/character/images/{cid}")
-
         img_url = None
+
         if isinstance(img_api, list) and img_api:
-            # use icon image specifically
-            for img in img_api:
-                if "icon" in img.get("url", "").lower():
-                    img_url = img["url"]
-                    break
-            if not img_url:
-                img_url = img_api[0]["url"]
+            img_url = img_api[0].get("url")
 
         img_path = HORSE_DIR / f"{cid}.png"
-
         if img_url:
             download(img_url, img_path)
 
@@ -87,17 +79,16 @@ def crawl(progress=None, status=None):
             "image": str(img_path)
         })
 
+        percent = int(((i + 1) / total_chars) * 50)
         if progress:
-            progress(i + 1, total)
+            progress(percent)
+        if status:
+            status(f"Crawling horses {i+1}/{total_chars}")
 
-    # =======================
-    # SUPPORT CARDS
-    # =======================
+    support_list = get_json(f"{BASE}/support")
+    total_support = len(support_list)
 
-    support_ids = get_json(f"{BASE}/support")
-    total_support = len(support_ids)
-
-    for i, s in enumerate(support_ids):
+    for i, s in enumerate(support_list):
         sid = s["id"]
 
         detail = get_json(f"{BASE}/support/{sid}")
@@ -106,7 +97,6 @@ def crawl(progress=None, status=None):
 
         img_url = f"https://gametora.com/images/umamusume/supports/tex_support_card_{sid}.png"
         img_path = SUPPORT_DIR / f"{sid}.png"
-
         download(img_url, img_path)
 
         cards.append({
@@ -118,10 +108,15 @@ def crawl(progress=None, status=None):
             "blacklisted": False
         })
 
+        percent = 50 + int(((i + 1) / total_support) * 50)
         if progress:
-            progress(i + 1, total_support)
+            progress(percent)
+        if status:
+            status(f"Crawling supports {i+1}/{total_support}")
 
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump({"horses": horses, "cards": cards}, f, indent=2)
 
     logging.info(f"Crawl complete. Horses: {len(horses)} Cards: {len(cards)}")
+    if status:
+        status("Crawl complete")
