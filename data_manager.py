@@ -1,37 +1,31 @@
-import os
 import json
-from datetime import datetime
+import os
 
-BASE_DIR = os.getcwd()
-
-DATA_DIR = os.path.join(BASE_DIR, "data")
-HORSE_IMG_DIR = os.path.join(DATA_DIR, "images", "horses")
-SUPPORT_IMG_DIR = os.path.join(DATA_DIR, "images", "support")
-
-DATA_FILE = os.path.join(DATA_DIR, "data.json")
+STATE_FILE = "data/user_state.json"
 
 
-def ensure_directories():
-    os.makedirs(HORSE_IMG_DIR, exist_ok=True)
-    os.makedirs(SUPPORT_IMG_DIR, exist_ok=True)
-
-    if not os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "w", encoding="utf-8") as f:
-            json.dump({
-                "horses": [],
-                "cards": [],
-                "blacklist": [],
-                "last_updated": None
-            }, f, indent=2)
-
-
-def load_data():
-    ensure_directories()
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
+def load_state():
+    if not os.path.exists(STATE_FILE):
+        return {"blacklist": [], "stars": {}}
+    with open(STATE_FILE, "r") as f:
         return json.load(f)
 
 
-def save_data(data):
-    data["last_updated"] = datetime.now().isoformat()
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+def save_state(state):
+    with open(STATE_FILE, "w") as f:
+        json.dump(state, f, indent=2)
+
+
+def toggle_blacklist(card_id):
+    state = load_state()
+    if card_id in state["blacklist"]:
+        state["blacklist"].remove(card_id)
+    else:
+        state["blacklist"].append(card_id)
+    save_state(state)
+
+
+def set_stars(card_id, stars):
+    state = load_state()
+    state["stars"][str(card_id)] = stars
+    save_state(state)
