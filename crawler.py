@@ -1,26 +1,19 @@
 import requests
 import time
 import logging
+import json
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
-import json
-import os
 
 BASE_URL = "https://umamusu.wiki/"
 TRAINEES_URL = urljoin(BASE_URL, "Game:List_of_Trainees")
 SUPPORT_URL = urljoin(BASE_URL, "Game:List_of_Support_Cards")
 
-CRAWL_DELAY = 2  # Respect robots.txt
+CRAWL_DELAY = 2
 
 HEADERS = {
-    "User-Agent": "UmamusumeBuilderBot/1.0"
+    "User-Agent": "UmamusumeBuilderBot/1.0 (respectful crawler)"
 }
-
-logging.basicConfig(
-    filename="app.log",
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
 
 
 def fetch_page(url):
@@ -55,10 +48,8 @@ def crawl():
         "horses": [],
         "cards": []
     }
-    with open("debug.html", "w", encoding="utf-8") as f:
-    f.write(html)
-    
-    # Crawl trainees
+
+    # Trainees
     html = fetch_page(TRAINEES_URL)
     if html:
         links = extract_links(html)
@@ -70,7 +61,7 @@ def crawl():
 
     time.sleep(CRAWL_DELAY)
 
-    # Crawl support cards
+    # Support cards
     html = fetch_page(SUPPORT_URL)
     if html:
         links = extract_links(html)
@@ -86,8 +77,3 @@ def crawl():
     logging.info(
         f"Crawl complete. Horses: {len(data['horses'])} Cards: {len(data['cards'])}"
     )
-
-
-if __name__ == "__main__":
-    logging.info("Application started")
-    crawl()
