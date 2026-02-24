@@ -4,17 +4,8 @@ import logging
 import json
 
 API_BASE = "https://umapyoi.net/api/v1"
+RATE_DELAY = 0.15  # ~6-7 requests per second (safe under limit)
 
-# Respect the API rate limits!
-# 10 req/sec, 500 req/min
-# We'll use a delay to stay safe.
-RATE_DELAY = 0.12  # ~8 calls per second
-
-logging.basicConfig(
-    filename="app.log",
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
 
 def fetch_json(url: str):
     try:
@@ -27,43 +18,33 @@ def fetch_json(url: str):
         return None
 
 
-def fetch_all_horses():
-    url = f"{API_BASE}/character"
-    data = fetch_json(url)
-    if not data:
-        return []
-    return data  # depends on API response shape
-
-
-def fetch_all_support_cards():
-    url = f"{API_BASE}/support"
-    data = fetch_json(url)
-    if not data:
-        return []
-    return data  # depends on API response shape
-
-
 def crawl():
     logging.info("Starting API crawl")
 
-    horses = fetch_all_horses()
+    # Fetch horses
+    horses_url = f"{API_BASE}/character"
+    horses = fetch_json(horses_url) or []
     time.sleep(RATE_DELAY)
 
-    cards = fetch_all_support_cards()
+    # Fetch support cards
+    cards_url = f"{API_BASE}/support"
+    cards = fetch_json(cards_url) or []
     time.sleep(RATE_DELAY)
 
-    # Save locally
     result = {
-        "horses": horses or [],
-        "cards": cards or []
+        "horses": horses,
+        "cards": cards
     }
 
-    with open("data.json", "w", encoding="utf-8") as f:
-        json.dump(result, f, indent=2, ensure_ascii=False)
+    try:
+        with open("data.json", "w", encoding="utf-8") as f:
+            json.dump(result, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logging.error(f"Failed to write data.json: {e}")
 
-    horse_count = len(result["horses"])
-    card_count = len(result["cards"])
+    horse_count = len(horses)
+    card_count = len(cards)
 
-    logging.info(f"API Crawl complete. Horses: {horse_count} Cards: {card_count}")
+    logging.info(f"Crawl complete. Horses: {horse_count} Cards: {card_count}")
 
     return horse_count, card_count
