@@ -1,9 +1,5 @@
 import logging
-import os
 from gui import run
-
-if not os.path.exists("data"):
-    os.makedirs("data")
 
 logging.basicConfig(
     filename="app.log",
