@@ -19,7 +19,7 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0"
 }
 
-TIMEOUT = 15
+TIMEOUT = 20
 
 
 def safe_json(url):
@@ -58,7 +58,7 @@ def crawl(progress_callback=None, status_callback=None):
     # ==========================================================
 
     if status_callback:
-        status_callback("Fetching character list...")
+        status_callback("Fetching characters...")
 
     char_list = safe_json(f"{BASE}/character/list")
     if not char_list:
@@ -76,12 +76,10 @@ def crawl(progress_callback=None, status_callback=None):
 
         img_path = HORSE_DIR / f"{char_id}.png"
 
-        # Fetch image URL from API
         img_api = safe_json(f"{BASE}/character/images/{char_id}")
 
         img_url = None
-        if img_api and isinstance(img_api, list) and len(img_api) > 0:
-            # First image is the main icon
+        if isinstance(img_api, list) and len(img_api) > 0:
             img_url = img_api[0].get("url")
 
         if img_url and not img_path.exists():
@@ -101,34 +99,31 @@ def crawl(progress_callback=None, status_callback=None):
     # ==========================================================
 
     if status_callback:
-        status_callback("Fetching support IDs...")
+        status_callback("Fetching support cards...")
 
-    support_list = safe_json(f"{BASE}/support")
-    if not support_list:
+    support_ids = safe_json(f"{BASE}/support")
+    if not support_ids:
         logging.error("Support list failed.")
         return
 
-    total_support = len(support_list)
+    total_support = len(support_ids)
 
-    for i, s in enumerate(support_list):
+    for i, s in enumerate(support_ids):
         support_id = s.get("id")
         if not support_id:
             continue
 
         detail = safe_json(f"{BASE}/support/{support_id}")
-        gametora = safe_json(f"{BASE}/support/{support_id}/gametora")
 
         name = detail.get("name_en") if detail else None
         support_type = detail.get("type") if detail else None
 
         img_path = SUPPORT_DIR / f"{support_id}.png"
 
-        img_url = None
-        if gametora:
-            # Gametora endpoint directly gives image URL
-            img_url = gametora.get("image")
+        # Direct GameTora image pattern
+        img_url = f"https://gametora.com/images/umamusume/supports/tex_support_card_{support_id}.png"
 
-        if img_url and not img_path.exists():
+        if not img_path.exists():
             download_image(img_url, img_path)
 
         cards.append({
