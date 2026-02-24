@@ -1,5 +1,9 @@
 import logging
-from gui import start_gui
+import os
+from gui import run
+
+if not os.path.exists("data"):
+    os.makedirs("data")
 
 logging.basicConfig(
     filename="app.log",
@@ -7,6 +11,6 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-if __name__ == "__main__":
-    logging.info("Application started")
-    start_gui()
+logging.info("Application started")
+
+run()
