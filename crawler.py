@@ -2,104 +2,68 @@ import requests
 import time
 import logging
 import json
-from bs4 import BeautifulSoup
-from urllib.parse import urljoin
 
-BASE_URL = "https://umamusu.wiki/"
-TRAINEES_PATH = "Game:List_of_Trainees"
-SUPPORT_PATH = "Game:List_of_Support_Cards"
+API_BASE = "https://umapyoi.net/api/v1"
 
-CRAWL_DELAY = 2  # Respect robots.txt
+# Respect the API rate limits!
+# 10 req/sec, 500 req/min
+# We'll use a delay to stay safe.
+RATE_DELAY = 0.12  # ~8 calls per second
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                  "AppleWebKit/537.36 (KHTML, like Gecko) "
-                  "Chrome/120.0 Safari/537.36"
-}
+logging.basicConfig(
+    filename="app.log",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
-
-def build_url(path: str) -> str:
-    """Ensure we always return a full absolute URL."""
-    return urljoin(BASE_URL, path)
-
-
-def fetch_page(url: str):
-    logging.info(f"Fetching: {url}")
-
+def fetch_json(url: str):
     try:
-        response = requests.get(url, headers=HEADERS, timeout=30)
-        response.raise_for_status()
-        return response.text
+        logging.info(f"Fetching API: {url}")
+        r = requests.get(url, timeout=15)
+        r.raise_for_status()
+        return r.json()
     except Exception as e:
-        logging.error(f"Failed to fetch {url}: {e}")
+        logging.error(f"API fetch failed '{url}': {e}")
         return None
 
 
-def extract_links(html: str):
-    soup = BeautifulSoup(html, "lxml")
-    links = []
+def fetch_all_horses():
+    url = f"{API_BASE}/character"
+    data = fetch_json(url)
+    if not data:
+        return []
+    return data  # depends on API response shape
 
-    for a in soup.find_all("a", href=True):
-        href = a["href"]
 
-        # Only grab internal Game pages
-        if href.startswith("/Game:") and not "#" in href:
-            full_url = urljoin(BASE_URL, href)
-            links.append(full_url)
-
-    return list(set(links))
+def fetch_all_support_cards():
+    url = f"{API_BASE}/support"
+    data = fetch_json(url)
+    if not data:
+        return []
+    return data  # depends on API response shape
 
 
 def crawl():
-    logging.info("Starting crawl")
+    logging.info("Starting API crawl")
 
-    data = {
-        "horses": [],
-        "cards": []
+    horses = fetch_all_horses()
+    time.sleep(RATE_DELAY)
+
+    cards = fetch_all_support_cards()
+    time.sleep(RATE_DELAY)
+
+    # Save locally
+    result = {
+        "horses": horses or [],
+        "cards": cards or []
     }
 
-    # Build correct URLs
-    trainees_url = build_url(TRAINEES_PATH)
-    support_url = build_url(SUPPORT_PATH)
+    with open("data.json", "w", encoding="utf-8") as f:
+        json.dump(result, f, indent=2, ensure_ascii=False)
 
-    # =========================
-    # Crawl Trainees
-    # =========================
-    html = fetch_page(trainees_url)
+    horse_count = len(result["horses"])
+    card_count = len(result["cards"])
 
-    if html:
-        links = extract_links(html)
-        logging.info(f"Found {len(links)} trainee links")
+    logging.info(f"API Crawl complete. Horses: {horse_count} Cards: {card_count}")
 
-        for link in links:
-            data["horses"].append(link)
-            time.sleep(CRAWL_DELAY)
-
-    time.sleep(CRAWL_DELAY)
-
-    # =========================
-    # Crawl Support Cards
-    # =========================
-    html = fetch_page(support_url)
-
-    if html:
-        links = extract_links(html)
-        logging.info(f"Found {len(links)} support links")
-
-        for link in links:
-            data["cards"].append(link)
-            time.sleep(CRAWL_DELAY)
-
-    # =========================
-    # Save JSON
-    # =========================
-    try:
-        with open("data.json", "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-
-        logging.info(
-            f"Crawl complete. Horses: {len(data['horses'])} "
-            f"Cards: {len(data['cards'])}"
-        )
-    except Exception as e:
-        logging.error(f"Failed to write data.json: {e}")
+    return horse_count, card_count
