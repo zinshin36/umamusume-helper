@@ -15,26 +15,22 @@ DATA_FILE = DATA_DIR / "data.json"
 for d in (DATA_DIR, IMG_DIR, HORSE_DIR, SUPPORT_DIR):
     os.makedirs(d, exist_ok=True)
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0"
-}
-
+HEADERS = {"User-Agent": "Mozilla/5.0"}
 TIMEOUT = 20
 
 
-def safe_json(url):
+def get_json(url):
     try:
         r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
-        if r.status_code != 200:
-            logging.error(f"HTTP {r.status_code} for {url}")
-            return None
-        return r.json()
+        if r.status_code == 200:
+            return r.json()
+        logging.error(f"HTTP {r.status_code} for {url}")
     except Exception as e:
         logging.error(f"JSON failure: {url} | {e}")
-        return None
+    return None
 
 
-def download_image(url, path):
+def download(url, path):
     try:
         r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
         if r.status_code == 200 and r.content:
@@ -46,103 +42,86 @@ def download_image(url, path):
         logging.error(f"Image error: {url} | {e}")
 
 
-def crawl(progress_callback=None, status_callback=None):
+def crawl(progress=None, status=None):
+
+    logging.info("Starting API crawl")
 
     horses = []
     cards = []
 
-    logging.info("Starting API crawl")
-
-    # ==========================================================
+    # =======================
     # CHARACTERS
-    # ==========================================================
+    # =======================
 
-    if status_callback:
-        status_callback("Fetching characters...")
-
-    char_list = safe_json(f"{BASE}/character/list")
+    char_list = get_json(f"{BASE}/character/list")
     if not char_list:
         logging.error("Character list failed.")
         return
 
-    total_chars = len(char_list)
+    total = len(char_list)
 
     for i, c in enumerate(char_list):
-        char_id = c.get("id")
+        cid = c["id"]
         name = c.get("name_en") or c.get("name")
 
-        if not char_id:
-            continue
-
-        img_path = HORSE_DIR / f"{char_id}.png"
-
-        img_api = safe_json(f"{BASE}/character/images/{char_id}")
+        img_api = get_json(f"{BASE}/character/images/{cid}")
 
         img_url = None
-        if isinstance(img_api, list) and len(img_api) > 0:
-            img_url = img_api[0].get("url")
+        if isinstance(img_api, list) and img_api:
+            # use icon image specifically
+            for img in img_api:
+                if "icon" in img.get("url", "").lower():
+                    img_url = img["url"]
+                    break
+            if not img_url:
+                img_url = img_api[0]["url"]
 
-        if img_url and not img_path.exists():
-            download_image(img_url, img_path)
+        img_path = HORSE_DIR / f"{cid}.png"
+
+        if img_url:
+            download(img_url, img_path)
 
         horses.append({
-            "id": char_id,
+            "id": cid,
             "name": name,
             "image": str(img_path)
         })
 
-        if progress_callback:
-            progress_callback("Characters", i + 1, total_chars)
+        if progress:
+            progress(i + 1, total)
 
-    # ==========================================================
+    # =======================
     # SUPPORT CARDS
-    # ==========================================================
+    # =======================
 
-    if status_callback:
-        status_callback("Fetching support cards...")
-
-    support_ids = safe_json(f"{BASE}/support")
-    if not support_ids:
-        logging.error("Support list failed.")
-        return
-
+    support_ids = get_json(f"{BASE}/support")
     total_support = len(support_ids)
 
     for i, s in enumerate(support_ids):
-        support_id = s.get("id")
-        if not support_id:
-            continue
+        sid = s["id"]
 
-        detail = safe_json(f"{BASE}/support/{support_id}")
-
+        detail = get_json(f"{BASE}/support/{sid}")
         name = detail.get("name_en") if detail else None
         support_type = detail.get("type") if detail else None
 
-        img_path = SUPPORT_DIR / f"{support_id}.png"
+        img_url = f"https://gametora.com/images/umamusume/supports/tex_support_card_{sid}.png"
+        img_path = SUPPORT_DIR / f"{sid}.png"
 
-        # Direct GameTora image pattern
-        img_url = f"https://gametora.com/images/umamusume/supports/tex_support_card_{support_id}.png"
-
-        if not img_path.exists():
-            download_image(img_url, img_path)
+        download(img_url, img_path)
 
         cards.append({
-            "id": support_id,
+            "id": sid,
             "name": name,
-            "image": str(img_path),
             "type": support_type,
-            "stats": detail.get("stats", {}) if detail else {},
+            "image": str(img_path),
             "stars": 0,
             "blacklisted": False
         })
 
-        if progress_callback:
-            progress_callback("Support Cards", i + 1, total_support)
+        if progress:
+            progress(i + 1, total_support)
 
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump({"horses": horses, "cards": cards}, f, indent=2)
 
     logging.info(f"Crawl complete. Horses: {len(horses)} Cards: {len(cards)}")
-
-    if status_callback:
-        status_callback("Crawl complete.")
