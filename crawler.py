@@ -1,137 +1,114 @@
 import requests
 import json
-import logging
 import os
+import logging
 from pathlib import Path
 from time import sleep
 
-BASE_URL = "https://umapyoi.net"
-
-CHAR_LIST_URL = f"{BASE_URL}/api/v1/character/list"
-SUPPORT_IDS_URL = f"{BASE_URL}/api/v1/support"
-SUPPORT_DETAIL_URL = f"{BASE_URL}/api/v1/support/{{}}"
-
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-    "Accept": "application/json"
-}
+BASE = "https://umapyoi.net/api/v1"
 
 DATA_DIR = Path("data")
 IMG_DIR = DATA_DIR / "images"
-HORSE_IMG = IMG_DIR / "horses"
-SUPPORT_IMG = IMG_DIR / "support"
+HORSE_DIR = IMG_DIR / "horses"
+SUPPORT_DIR = IMG_DIR / "support"
 DATA_FILE = DATA_DIR / "data.json"
 
-for d in (DATA_DIR, IMG_DIR, HORSE_IMG, SUPPORT_IMG):
+for d in (DATA_DIR, IMG_DIR, HORSE_DIR, SUPPORT_DIR):
     os.makedirs(d, exist_ok=True)
 
+HEADERS = {
+    "User-Agent": "Mozilla/5.0",
+    "Accept": "application/json"
+}
 
-def safe_get_json(url):
+
+def safe_json(url):
+    r = requests.get(url, headers=HEADERS)
+    if r.status_code != 200:
+        logging.error(f"HTTP {r.status_code} for {url}")
+        return None
     try:
-        r = requests.get(url, headers=HEADERS, timeout=15)
-
-        if r.status_code != 200:
-            logging.error(f"HTTP {r.status_code} for {url}")
-            logging.error(f"Response text: {r.text[:300]}")
-            return None
-
-        if not r.text.strip():
-            logging.error(f"Empty response from {url}")
-            return None
-
         return r.json()
-
-    except Exception as e:
-        logging.error(f"Request failed {url}: {e}")
+    except:
+        logging.error(f"Bad JSON from {url}")
         return None
 
 
-def download_image(url, save_path):
+def download_image(url, path):
     try:
-        r = requests.get(url, headers=HEADERS, timeout=10)
+        r = requests.get(url, headers=HEADERS)
         if r.status_code == 200:
-            with open(save_path, "wb") as f:
+            with open(path, "wb") as f:
                 f.write(r.content)
-    except Exception as e:
-        logging.warning(f"Image download failed: {e}")
+    except:
+        pass
 
 
-def crawl():
-    logging.info("Starting API crawl")
+def crawl(progress_callback=None):
 
     horses = []
     cards = []
 
-    # ------------------------
-    # CHARACTERS
-    # ------------------------
-    char_list = safe_get_json(CHAR_LIST_URL)
+    logging.info("Starting API crawl")
 
-    if not char_list:
-        logging.error("Character list returned nothing")
-    else:
-        for c in char_list:
-            cid = c.get("id")
+    # -------- CHARACTERS --------
+    char_list = safe_json(f"{BASE}/character")
+    if char_list:
+        for i, c in enumerate(char_list):
+            cid = c["id"]
             name = c.get("name_en") or c.get("name")
-
-            if not name:
-                continue
-
             img_url = c.get("image_url")
-            img_path = HORSE_IMG / f"{cid}.png"
 
+            img_path = HORSE_DIR / f"{cid}.png"
             if img_url and not img_path.exists():
                 download_image(img_url, img_path)
 
             horses.append({
                 "id": cid,
                 "name": name,
-                "image": str(img_path),
-                "type": c.get("type", "")
+                "image": str(img_path)
             })
 
-            sleep(0.05)  # 10 req/sec safe
+            if progress_callback:
+                progress_callback("Characters", i+1, len(char_list))
 
-    # ------------------------
-    # SUPPORT IDS
-    # ------------------------
-    support_ids = safe_get_json(SUPPORT_IDS_URL)
+            sleep(0.1)
 
-    if not support_ids:
-        logging.error("Support ID list returned nothing")
-    else:
-        for sid in support_ids:
+    # -------- SUPPORT LIST --------
+    support_list = safe_json(f"{BASE}/support")
+    if support_list:
+        total = len(support_list)
 
-            detail = safe_get_json(SUPPORT_DETAIL_URL.format(sid))
+        for i, s in enumerate(support_list):
 
+            sid = s["id"]   # FIX: use ID only
+
+            detail = safe_json(f"{BASE}/support/{sid}")
             if not detail:
                 continue
 
-            cid = detail.get("id")
             name = detail.get("name_en") or detail.get("name")
-
-            if not name:
-                continue
-
             img_url = detail.get("image_url")
-            img_path = SUPPORT_IMG / f"{cid}.png"
 
+            img_path = SUPPORT_DIR / f"{sid}.png"
             if img_url and not img_path.exists():
                 download_image(img_url, img_path)
 
             cards.append({
-                "id": cid,
+                "id": sid,
                 "name": name,
                 "image": str(img_path),
+                "type": detail.get("type"),
                 "stats": detail.get("stats", {}),
-                "type": detail.get("type", "")
+                "stars": 0,
+                "blacklisted": False
             })
 
-            sleep(0.05)
+            if progress_callback:
+                progress_callback("Support Cards", i+1, total)
 
-    # ------------------------
-    # SAVE
-    # ------------------------
+            sleep(0.1)
+
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump({"horses": horses, "cards": cards}, f, indent=2)
 
