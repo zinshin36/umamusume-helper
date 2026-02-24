@@ -6,35 +6,44 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
 BASE_URL = "https://umamusu.wiki/"
-TRAINEES_URL = urljoin(BASE_URL, "Game:List_of_Trainees")
-SUPPORT_URL = urljoin(BASE_URL, "Game:List_of_Support_Cards")
+TRAINEES_PATH = "Game:List_of_Trainees"
+SUPPORT_PATH = "Game:List_of_Support_Cards"
 
-CRAWL_DELAY = 4
+CRAWL_DELAY = 2  # Respect robots.txt
 
 HEADERS = {
-    "User-Agent": "UmamusumeBuilderBot/1.0 (respectful crawler)"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                  "AppleWebKit/537.36 (KHTML, like Gecko) "
+                  "Chrome/120.0 Safari/537.36"
 }
 
 
-def fetch_page(url):
-    logging.info(f"Fetching: {url}")
-    response = requests.get(url, headers=HEADERS, timeout=30)
+def build_url(path: str) -> str:
+    """Ensure we always return a full absolute URL."""
+    return urljoin(BASE_URL, path)
 
-    if response.status_code != 200:
-        logging.warning(f"Failed request: {response.status_code}")
+
+def fetch_page(url: str):
+    logging.info(f"Fetching: {url}")
+
+    try:
+        response = requests.get(url, headers=HEADERS, timeout=30)
+        response.raise_for_status()
+        return response.text
+    except Exception as e:
+        logging.error(f"Failed to fetch {url}: {e}")
         return None
 
-    return response.text
 
-
-def extract_links(html):
+def extract_links(html: str):
     soup = BeautifulSoup(html, "lxml")
     links = []
 
     for a in soup.find_all("a", href=True):
         href = a["href"]
 
-        if href.startswith("/Game:") and ":" not in href[6:]:
+        # Only grab internal Game pages
+        if href.startswith("/Game:") and not "#" in href:
             full_url = urljoin(BASE_URL, href)
             links.append(full_url)
 
@@ -49,8 +58,15 @@ def crawl():
         "cards": []
     }
 
-    # Trainees
-    html = fetch_page(TRAINEES_URL)
+    # Build correct URLs
+    trainees_url = build_url(TRAINEES_PATH)
+    support_url = build_url(SUPPORT_PATH)
+
+    # =========================
+    # Crawl Trainees
+    # =========================
+    html = fetch_page(trainees_url)
+
     if html:
         links = extract_links(html)
         logging.info(f"Found {len(links)} trainee links")
@@ -61,19 +77,29 @@ def crawl():
 
     time.sleep(CRAWL_DELAY)
 
-    # Support cards
-    html = fetch_page(SUPPORT_URL)
+    # =========================
+    # Crawl Support Cards
+    # =========================
+    html = fetch_page(support_url)
+
     if html:
         links = extract_links(html)
-        logging.info(f"Found {len(links)} support card links")
+        logging.info(f"Found {len(links)} support links")
 
         for link in links:
             data["cards"].append(link)
             time.sleep(CRAWL_DELAY)
 
-    with open("data.json", "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+    # =========================
+    # Save JSON
+    # =========================
+    try:
+        with open("data.json", "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
 
-    logging.info(
-        f"Crawl complete. Horses: {len(data['horses'])} Cards: {len(data['cards'])}"
-    )
+        logging.info(
+            f"Crawl complete. Horses: {len(data['horses'])} "
+            f"Cards: {len(data['cards'])}"
+        )
+    except Exception as e:
+        logging.error(f"Failed to write data.json: {e}")
