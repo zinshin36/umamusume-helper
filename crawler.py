@@ -61,7 +61,6 @@ def crawl(progress_callback=None, status_callback=None):
         status_callback("Fetching character list...")
 
     char_list = safe_json(f"{BASE}/character/list")
-
     if not char_list:
         logging.error("Character list failed.")
         return
@@ -69,18 +68,23 @@ def crawl(progress_callback=None, status_callback=None):
     total_chars = len(char_list)
 
     for i, c in enumerate(char_list):
-
         char_id = c.get("id")
         name = c.get("name_en") or c.get("name")
 
-        if not char_id or not name:
+        if not char_id:
             continue
 
-        # Direct icon path
-        img_url = f"https://umapyoi.net/icon/character/{char_id}.png"
         img_path = HORSE_DIR / f"{char_id}.png"
 
-        if not img_path.exists():
+        # Fetch image URL from API
+        img_api = safe_json(f"{BASE}/character/images/{char_id}")
+
+        img_url = None
+        if img_api and isinstance(img_api, list) and len(img_api) > 0:
+            # First image is the main icon
+            img_url = img_api[0].get("url")
+
+        if img_url and not img_path.exists():
             download_image(img_url, img_path)
 
         horses.append({
@@ -99,32 +103,32 @@ def crawl(progress_callback=None, status_callback=None):
     if status_callback:
         status_callback("Fetching support IDs...")
 
-    support_ids = safe_json(f"{BASE}/support")
-
-    if not support_ids:
+    support_list = safe_json(f"{BASE}/support")
+    if not support_list:
         logging.error("Support list failed.")
         return
 
-    total_support = len(support_ids)
+    total_support = len(support_list)
 
-    for i, s in enumerate(support_ids):
-
+    for i, s in enumerate(support_list):
         support_id = s.get("id")
         if not support_id:
             continue
 
         detail = safe_json(f"{BASE}/support/{support_id}")
-        if not detail:
-            continue
+        gametora = safe_json(f"{BASE}/support/{support_id}/gametora")
 
-        name = detail.get("name_en") or detail.get("name")
-        support_type = detail.get("type")
+        name = detail.get("name_en") if detail else None
+        support_type = detail.get("type") if detail else None
 
-        # Direct icon path
-        img_url = f"https://umapyoi.net/icon/support/{support_id}.png"
         img_path = SUPPORT_DIR / f"{support_id}.png"
 
-        if not img_path.exists():
+        img_url = None
+        if gametora:
+            # Gametora endpoint directly gives image URL
+            img_url = gametora.get("image")
+
+        if img_url and not img_path.exists():
             download_image(img_url, img_path)
 
         cards.append({
@@ -132,7 +136,7 @@ def crawl(progress_callback=None, status_callback=None):
             "name": name,
             "image": str(img_path),
             "type": support_type,
-            "stats": detail.get("stats", {}),
+            "stats": detail.get("stats", {}) if detail else {},
             "stars": 0,
             "blacklisted": False
         })
