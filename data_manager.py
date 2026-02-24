@@ -1,18 +1,34 @@
 import json
 import os
 
-STATE_FILE = "data/user_state.json"
+DATA_DIR = "data"
+DATA_FILE = os.path.join(DATA_DIR, "data.json")
+STATE_FILE = os.path.join(DATA_DIR, "user_state.json")
+
+
+def ensure_data_exists(crawl_func):
+    if not os.path.exists(DATA_FILE):
+        os.makedirs(DATA_DIR, exist_ok=True)
+        crawl_func()
+
+
+def load_data():
+    if not os.path.exists(DATA_FILE):
+        return {"horses": [], "cards": []}
+    with open(DATA_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 
 def load_state():
     if not os.path.exists(STATE_FILE):
         return {"blacklist": [], "stars": {}}
-    with open(STATE_FILE, "r") as f:
+    with open(STATE_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
 def save_state(state):
-    with open(STATE_FILE, "w") as f:
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
 
 
