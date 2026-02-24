@@ -1,30 +1,29 @@
-import requests
 import time
 import logging
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from pathlib import Path
+import cloudscraper
 
 BASE = "https://umamusu.wiki"
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5",
-    "Connection": "keep-alive"
-}
-
-session = requests.Session()
-session.headers.update(HEADERS)
-
 HORSE_LIST = BASE + "/Game:List_of_Trainees"
 SUPPORT_LIST = BASE + "/Game:List_of_Support_Cards"
+
+# Cloudflare-safe session
+scraper = cloudscraper.create_scraper(
+    browser={
+        'browser': 'chrome',
+        'platform': 'windows',
+        'mobile': False
+    }
+)
 
 
 def get_character_links(list_url):
     logging.info(f"Fetching list page: {list_url}")
 
-    r = session.get(list_url, timeout=30, allow_redirects=True)
+    r = scraper.get(list_url, timeout=60)
 
     if r.status_code != 200:
         logging.warning(f"Failed request: {r.status_code}")
@@ -34,8 +33,17 @@ def get_character_links(list_url):
 
     links = []
 
-    for a in soup.select("a[href^='/wiki/']"):
+    # Find all character links in page content
+    content = soup.find("div", {"id": "mw-content-text"})
+    if not content:
+        logging.warning("No content div found")
+        return []
+
+    for a in content.find_all("a", href=True):
         href = a["href"]
+
+        if not href.startswith("/wiki/"):
+            continue
 
         if ":" in href:
             continue
@@ -51,7 +59,8 @@ def get_character_links(list_url):
 
 def scrape_profile(url, save_dir: Path):
     try:
-        r = session.get(url, timeout=30)
+        r = scraper.get(url, timeout=60)
+
         if r.status_code != 200:
             return None
 
@@ -76,11 +85,11 @@ def scrape_profile(url, save_dir: Path):
         if img_url.startswith("//"):
             img_url = "https:" + img_url
 
-        filename = name.replace("/", "_") + ".png"
+        filename = name.replace("/", "_").replace(" ", "_") + ".png"
         path = save_dir / filename
 
         if not path.exists():
-            img_data = session.get(img_url, timeout=30)
+            img_data = scraper.get(img_url, timeout=60)
             if img_data.status_code == 200:
                 with open(path, "wb") as f:
                     f.write(img_data.content)
@@ -103,7 +112,7 @@ def crawl_section(list_url, save_dir: Path, progress_callback, label):
     total = len(links)
 
     if total == 0:
-        logging.warning("No links found — site likely blocking.")
+        logging.warning("No links found — Cloudflare likely blocking.")
         return results
 
     for i, link in enumerate(links, start=1):
@@ -115,7 +124,8 @@ def crawl_section(list_url, save_dir: Path, progress_callback, label):
         percent = int((i / total) * 100)
         progress_callback(percent, f"{label}: {percent}%")
 
-        time.sleep(1)
+        # Slow crawl (you said speed doesn't matter)
+        time.sleep(2)
 
     return results
 
