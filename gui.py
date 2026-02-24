@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
 from PIL import Image, ImageTk
 import json
 import os
@@ -17,7 +17,6 @@ class App:
         self.root.geometry("1200x800")
 
         self.data = {"horses": [], "cards": []}
-        self.images_cache = {}
 
         self.build_layout()
         self.load_data()
@@ -42,19 +41,14 @@ class App:
         self.progress = ttk.Progressbar(top, length=300)
         self.progress.pack(side="left", padx=10)
 
+        self.percent_label = ttk.Label(top, text="0%")
+        self.percent_label.pack(side="left")
+
         self.status_label = ttk.Label(top, text="Ready")
-        self.status_label.pack(side="left")
+        self.status_label.pack(side="left", padx=10)
 
-        self.count_label = ttk.Label(self.root, text="")
+        self.count_label = ttk.Label(self.root, text="Horses: 0 | Cards: 0")
         self.count_label.pack()
-
-        self.canvas = tk.Canvas(self.root)
-        self.canvas.pack(fill="both", expand=True)
-
-        self.frame = ttk.Frame(self.canvas)
-        self.canvas.create_window((0, 0), window=self.frame, anchor="nw")
-
-        self.frame.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
 
     # ---------------- DATA ----------------
 
@@ -69,83 +63,39 @@ class App:
             text=f"Horses: {len(self.data['horses'])} | Cards: {len(self.data['cards'])}"
         )
 
-        self.draw_cards()
-
-    # ---------------- DRAW ----------------
-
-    def draw_cards(self):
-
-        for widget in self.frame.winfo_children():
-            widget.destroy()
-
-        cols = 6
-        for i, card in enumerate(self.data["cards"]):
-            row = i // cols
-            col = i % cols
-
-            f = ttk.Frame(self.frame)
-            f.grid(row=row, column=col, padx=5, pady=5)
-
-            img = self.get_image(card["image"])
-            lbl = tk.Label(f, image=img)
-            lbl.image = img
-            lbl.pack()
-
-            lbl.bind("<Button-1>", lambda e, c=card: self.add_star(c))
-            lbl.bind("<Button-3>", lambda e, c=card: self.toggle_blacklist(c))
-
-            star_lbl = ttk.Label(f, text="★"*card.get("stars", 0))
-            star_lbl.pack()
-
-            name_lbl = ttk.Label(f, text=card["name"], wraplength=120)
-            name_lbl.pack()
-
-            if card.get("blacklisted"):
-                lbl.config(bg="gray")
-
-    # ---------------- IMAGE ----------------
-
-    def get_image(self, path):
-        if not os.path.exists(path):
-            img = Image.new("RGB", (128, 128), color="gray")
-        else:
-            img = Image.open(path).resize((128, 128))
-
-        return ImageTk.PhotoImage(img)
-
-    # ---------------- INTERACTION ----------------
-
-    def add_star(self, card):
-        card["stars"] = (card.get("stars", 0) + 1) % 5
-        self.save()
-        self.draw_cards()
-
-    def toggle_blacklist(self, card):
-        card["blacklisted"] = not card.get("blacklisted", False)
-        self.save()
-        self.draw_cards()
-
-    # ---------------- SAVE ----------------
-
-    def save(self):
-        with open(DATA_FILE, "w", encoding="utf-8") as f:
-            json.dump(self.data, f, indent=2)
-
     # ---------------- UPDATE ----------------
 
     def update_data(self):
 
+        self.update_btn.config(state="disabled")
+        self.status_label.config(text="Starting...")
+        self.percent_label.config(text="0%")
+        self.progress["value"] = 0
+
         def progress(section, current, total):
+            percent = int((current / total) * 100)
             self.progress["maximum"] = total
             self.progress["value"] = current
+            self.percent_label.config(text=f"{percent}%")
             self.status_label.config(text=f"{section}: {current}/{total}")
 
-        def task():
-            crawl(progress)
-            self.load_data()
-            self.status_label.config(text="Done")
+            self.root.update_idletasks()
 
-        threading.Thread(target=task).start()
+        def status(text):
+            self.status_label.config(text=text)
+            self.root.update_idletasks()
+
+        def task():
+            try:
+                crawl(progress_callback=progress, status_callback=status)
+                self.load_data()
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
+            finally:
+                self.update_btn.config(state="normal")
+                self.status_label.config(text="Ready")
+
+        threading.Thread(target=task, daemon=True).start()
 
 
 def run():
