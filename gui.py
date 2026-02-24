@@ -1,29 +1,33 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import ttk
 import threading
 import crawler
 
+class App(tk.Tk):
+    def __init__(self):
+        super().__init__()
 
-def run_crawler():
-    try:
-        crawler.crawl()
-        messagebox.showinfo("Done", "Crawl completed successfully.")
-    except Exception as e:
-        messagebox.showerror("Error", str(e))
+        self.title("Umamusume Builder")
+        self.geometry("500x300")
 
+        self.progress = ttk.Progressbar(self, length=400)
+        self.progress.pack(pady=10)
 
-def start_gui():
-    root = tk.Tk()
-    root.title("Umamusume Builder")
-    root.geometry("300x150")
+        self.status_label = tk.Label(self, text="Idle")
+        self.status_label.pack()
 
-    btn = tk.Button(
-        root,
-        text="Start Crawl",
-        command=lambda: threading.Thread(target=run_crawler).start(),
-        height=2,
-        width=20
-    )
-    btn.pack(pady=40)
+        self.count_label = tk.Label(self, text="Horses: 0 | Cards: 0")
+        self.count_label.pack(pady=5)
 
-    root.mainloop()
+        self.btn = tk.Button(
+            self,
+            text="Update Database (API)",
+            command=lambda: threading.Thread(target=self.start_crawl).start()
+        )
+        self.btn.pack(pady=20)
+
+    def start_crawl(self):
+        self.status_label.config(text="Crawling API…")
+        horses, cards = crawler.crawl()
+        self.count_label.config(text=f"Horses: {horses} | Cards: {cards}")
+        self.status_label.config(text="Crawl complete!")
