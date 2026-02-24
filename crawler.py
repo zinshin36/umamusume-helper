@@ -3,7 +3,6 @@ import json
 import os
 import logging
 from pathlib import Path
-from time import sleep
 
 BASE = "https://umapyoi.net/api/v1"
 
@@ -21,22 +20,24 @@ HEADERS = {
     "Accept": "application/json"
 }
 
+TIMEOUT = 10
+
 
 def safe_json(url):
-    r = requests.get(url, headers=HEADERS)
-    if r.status_code != 200:
-        logging.error(f"HTTP {r.status_code} for {url}")
-        return None
     try:
+        r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+        if r.status_code != 200:
+            logging.error(f"HTTP {r.status_code} for {url}")
+            return None
         return r.json()
-    except:
-        logging.error(f"Bad JSON from {url}")
+    except Exception as e:
+        logging.error(f"Request failed: {url} | {e}")
         return None
 
 
 def download_image(url, path):
     try:
-        r = requests.get(url, headers=HEADERS)
+        r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
         if r.status_code == 200:
             with open(path, "wb") as f:
                 f.write(r.content)
@@ -44,72 +45,94 @@ def download_image(url, path):
         pass
 
 
-def crawl(progress_callback=None):
+def crawl(progress_callback=None, status_callback=None):
 
     horses = []
     cards = []
 
     logging.info("Starting API crawl")
 
-    # -------- CHARACTERS --------
+    # ---------------- CHARACTERS ----------------
+
+    if status_callback:
+        status_callback("Fetching character list...")
+
     char_list = safe_json(f"{BASE}/character")
-    if char_list:
-        for i, c in enumerate(char_list):
-            cid = c["id"]
-            name = c.get("name_en") or c.get("name")
-            img_url = c.get("image_url")
 
-            img_path = HORSE_DIR / f"{cid}.png"
-            if img_url and not img_path.exists():
-                download_image(img_url, img_path)
+    if not char_list:
+        logging.error("Character list failed.")
+        return
 
-            horses.append({
-                "id": cid,
-                "name": name,
-                "image": str(img_path)
-            })
+    total_chars = len(char_list)
 
-            if progress_callback:
-                progress_callback("Characters", i+1, len(char_list))
+    for i, c in enumerate(char_list):
+        cid = c["id"]
+        name = c.get("name_en") or c.get("name")
+        img_url = c.get("image_url")
 
-            sleep(0.1)
+        img_path = HORSE_DIR / f"{cid}.png"
 
-    # -------- SUPPORT LIST --------
+        if img_url and not img_path.exists():
+            download_image(img_url, img_path)
+
+        horses.append({
+            "id": cid,
+            "name": name,
+            "image": str(img_path)
+        })
+
+        if progress_callback:
+            progress_callback("Characters", i + 1, total_chars)
+
+    # ---------------- SUPPORT LIST ----------------
+
+    if status_callback:
+        status_callback("Fetching support list...")
+
     support_list = safe_json(f"{BASE}/support")
-    if support_list:
-        total = len(support_list)
 
-        for i, s in enumerate(support_list):
+    if not support_list:
+        logging.error("Support list failed.")
+        return
 
-            sid = s["id"]   # FIX: use ID only
+    total_support = len(support_list)
 
-            detail = safe_json(f"{BASE}/support/{sid}")
-            if not detail:
-                continue
+    for i, s in enumerate(support_list):
 
-            name = detail.get("name_en") or detail.get("name")
-            img_url = detail.get("image_url")
+        sid = s["id"]
 
-            img_path = SUPPORT_DIR / f"{sid}.png"
-            if img_url and not img_path.exists():
-                download_image(img_url, img_path)
+        if status_callback:
+            status_callback(f"Fetching support {i+1}/{total_support}")
 
-            cards.append({
-                "id": sid,
-                "name": name,
-                "image": str(img_path),
-                "type": detail.get("type"),
-                "stats": detail.get("stats", {}),
-                "stars": 0,
-                "blacklisted": False
-            })
+        detail = safe_json(f"{BASE}/support/{sid}")
+        if not detail:
+            continue
 
-            if progress_callback:
-                progress_callback("Support Cards", i+1, total)
+        name = detail.get("name_en") or detail.get("name")
+        img_url = detail.get("image_url")
 
-            sleep(0.1)
+        img_path = SUPPORT_DIR / f"{sid}.png"
+
+        if img_url and not img_path.exists():
+            download_image(img_url, img_path)
+
+        cards.append({
+            "id": sid,
+            "name": name,
+            "image": str(img_path),
+            "type": detail.get("type"),
+            "stats": detail.get("stats", {}),
+            "stars": 0,
+            "blacklisted": False
+        })
+
+        if progress_callback:
+            progress_callback("Support Cards", i + 1, total_support)
 
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump({"horses": horses, "cards": cards}, f, indent=2)
 
     logging.info(f"Crawl complete. Horses: {len(horses)} Cards: {len(cards)}")
+
+    if status_callback:
+        status_callback("Crawl complete.")
