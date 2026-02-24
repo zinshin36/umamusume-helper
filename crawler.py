@@ -20,7 +20,7 @@ HEADERS = {
     "Accept": "application/json"
 }
 
-TIMEOUT = 10
+TIMEOUT = 15
 
 
 def safe_json(url):
@@ -52,18 +52,19 @@ def crawl(progress_callback=None, status_callback=None):
 
     logging.info("Starting API crawl")
 
-    # ---------------- CHARACTERS ----------------
+    # ==========================================================
+    # CHARACTERS
+    # ==========================================================
 
     if status_callback:
         status_callback("Fetching character list...")
 
-    char_response = safe_json(f"{BASE}/character")
+    char_list = safe_json(f"{BASE}/character/list")
 
-    if not char_response or "data" not in char_response:
-        logging.error("Character endpoint returned unexpected structure.")
+    if not char_list:
+        logging.error("Character list endpoint failed.")
         return
 
-    char_list = char_response["data"]
     total_chars = len(char_list)
 
     for i, c in enumerate(char_list):
@@ -74,10 +75,17 @@ def crawl(progress_callback=None, status_callback=None):
         if not char_id or not name:
             continue
 
-        img_url = f"https://umapyoi.net/icon/character/{char_id}.png"
+        # Get image info
+        img_info = safe_json(f"{BASE}/character/images/{char_id}")
+        img_url = None
+
+        if img_info and isinstance(img_info, list) and len(img_info) > 0:
+            # Use first image entry
+            img_url = img_info[0].get("image_url")
+
         img_path = HORSE_DIR / f"{char_id}.png"
 
-        if not img_path.exists():
+        if img_url and not img_path.exists():
             download_image(img_url, img_path)
 
         horses.append({
@@ -89,33 +97,42 @@ def crawl(progress_callback=None, status_callback=None):
         if progress_callback:
             progress_callback("Characters", i + 1, total_chars)
 
-    # ---------------- SUPPORT CARDS ----------------
+    # ==========================================================
+    # SUPPORT CARDS
+    # ==========================================================
 
     if status_callback:
-        status_callback("Fetching support list...")
+        status_callback("Fetching support IDs...")
 
-    support_response = safe_json(f"{BASE}/support")
+    support_ids = safe_json(f"{BASE}/support")
 
-    if not support_response or "data" not in support_response:
-        logging.error("Support endpoint returned unexpected structure.")
+    if not support_ids:
+        logging.error("Support ID endpoint failed.")
         return
 
-    support_list = support_response["data"]
-    total_support = len(support_list)
+    total_support = len(support_ids)
 
-    for i, s in enumerate(support_list):
+    for i, s in enumerate(support_ids):
 
         support_id = s.get("id")
-        name = s.get("name_en") or s.get("name")
-        support_type = s.get("type")
 
-        if not support_id or not name:
+        if not support_id:
             continue
 
-        img_url = f"https://umapyoi.net/icon/support/{support_id}.png"
+        if status_callback:
+            status_callback(f"Fetching support {i+1}/{total_support}")
+
+        detail = safe_json(f"{BASE}/support/{support_id}")
+        if not detail:
+            continue
+
+        name = detail.get("name_en") or detail.get("name")
+        support_type = detail.get("type")
+
+        img_url = detail.get("image_url")
         img_path = SUPPORT_DIR / f"{support_id}.png"
 
-        if not img_path.exists():
+        if img_url and not img_path.exists():
             download_image(img_url, img_path)
 
         cards.append({
@@ -123,13 +140,17 @@ def crawl(progress_callback=None, status_callback=None):
             "name": name,
             "image": str(img_path),
             "type": support_type,
-            "stats": s.get("stats", {}),
+            "stats": detail.get("stats", {}),
             "stars": 0,
             "blacklisted": False
         })
 
         if progress_callback:
             progress_callback("Support Cards", i + 1, total_support)
+
+    # ==========================================================
+    # SAVE
+    # ==========================================================
 
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump({"horses": horses, "cards": cards}, f, indent=2)
