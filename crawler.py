@@ -9,7 +9,7 @@ BASE_URL = "https://umamusu.wiki/"
 TRAINEES_URL = urljoin(BASE_URL, "Game:List_of_Trainees")
 SUPPORT_URL = urljoin(BASE_URL, "Game:List_of_Support_Cards")
 
-CRAWL_DELAY = 2
+CRAWL_DELAY = 4
 
 HEADERS = {
     "User-Agent": "UmamusumeBuilderBot/1.0 (respectful crawler)"
