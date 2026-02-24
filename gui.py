@@ -3,11 +3,17 @@ from tkinter import ttk
 import threading
 import crawler
 
+
+def start_gui():
+    app = App()
+    app.mainloop()
+
+
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
 
-        self.title("Umamusume Builder")
+        self.title("Umamusume Database Builder")
         self.geometry("500x300")
 
         self.progress = ttk.Progressbar(self, length=400)
@@ -19,15 +25,15 @@ class App(tk.Tk):
         self.count_label = tk.Label(self, text="Horses: 0 | Cards: 0")
         self.count_label.pack(pady=5)
 
-        self.btn = tk.Button(
+        self.update_button = tk.Button(
             self,
             text="Update Database (API)",
-            command=lambda: threading.Thread(target=self.start_crawl).start()
+            command=lambda: threading.Thread(target=self.run_update).start()
         )
-        self.btn.pack(pady=20)
+        self.update_button.pack(pady=20)
 
-    def start_crawl(self):
-        self.status_label.config(text="Crawling API…")
+    def run_update(self):
+        self.status_label.config(text="Updating from API...")
         horses, cards = crawler.crawl()
         self.count_label.config(text=f"Horses: {horses} | Cards: {cards}")
-        self.status_label.config(text="Crawl complete!")
+        self.status_label.config(text="Update Complete!")
