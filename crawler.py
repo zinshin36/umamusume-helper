@@ -1,16 +1,17 @@
 import requests
-import time
-import logging
 import json
 import os
+import time
+import logging
+from scraper import get_global_character_names, get_global_support_names
 
 API_BASE = "https://umapyoi.net/api/v1"
-RATE_DELAY = 0.15  # Safe under 10 req/sec
-
 DATA_DIR = "data"
 IMAGE_DIR = os.path.join(DATA_DIR, "images")
 HORSE_IMG_DIR = os.path.join(IMAGE_DIR, "horses")
 CARD_IMG_DIR = os.path.join(IMAGE_DIR, "support_cards")
+
+RATE_DELAY = 0.2
 
 
 def ensure_dirs():
@@ -18,128 +19,82 @@ def ensure_dirs():
     os.makedirs(CARD_IMG_DIR, exist_ok=True)
 
 
-def fetch_json(url: str):
-    try:
-        logging.info(f"Fetching API: {url}")
-        r = requests.get(url, timeout=20)
-        r.raise_for_status()
-        return r.json()
-    except Exception as e:
-        logging.error(f"API fetch failed '{url}': {e}")
-        return None
+def fetch(url):
+    r = requests.get(url)
+    r.raise_for_status()
+    return r.json()
 
 
-def download_image(url: str, save_path: str):
-    try:
-        r = requests.get(url, timeout=20)
-        r.raise_for_status()
-        with open(save_path, "wb") as f:
-            f.write(r.content)
-    except Exception as e:
-        logging.error(f"Failed downloading image {url}: {e}")
-
-
-def filter_global(entries):
-    """
-    Filters entries to GLOBAL only.
-    Umapyoi uses availability flags.
-    """
-    global_list = []
-
-    for entry in entries:
-        # Some entries use "availability"
-        # Global usually includes "EN" region
-        availability = entry.get("availability", [])
-        if "EN" in availability:
-            global_list.append(entry)
-
-    return global_list
-
-
-def process_horses():
-    horses_url = f"{API_BASE}/character"
-    horses = fetch_json(horses_url) or []
-    time.sleep(RATE_DELAY)
-
-    horses = filter_global(horses)
-
-    processed = []
-
-    for horse in horses:
-        horse_id = horse.get("id")
-        name = horse.get("name", "unknown")
-
-        image_url = horse.get("image")  # API usually provides this
-        image_path = None
-
-        if image_url:
-            filename = f"{horse_id}.png"
-            image_path = os.path.join(HORSE_IMG_DIR, filename)
-            download_image(image_url, image_path)
-            time.sleep(RATE_DELAY)
-
-        processed.append({
-            "id": horse_id,
-            "name": name,
-            "rarity": horse.get("rarity"),
-            "image": image_path
-        })
-
-    return processed
-
-
-def process_support_cards():
-    cards_url = f"{API_BASE}/support"
-    cards = fetch_json(cards_url) or []
-    time.sleep(RATE_DELAY)
-
-    cards = filter_global(cards)
-
-    processed = []
-
-    for card in cards:
-        card_id = card.get("id")
-        name = card.get("name", "unknown")
-
-        image_url = card.get("image")
-        image_path = None
-
-        if image_url:
-            filename = f"{card_id}.png"
-            image_path = os.path.join(CARD_IMG_DIR, filename)
-            download_image(image_url, image_path)
-            time.sleep(RATE_DELAY)
-
-        processed.append({
-            "id": card_id,
-            "name": name,
-            "rarity": card.get("rarity"),
-            "type": card.get("type"),
-            "image": image_path
-        })
-
-    return processed
+def download_image(url, path):
+    if not url:
+        return
+    if os.path.exists(path):
+        return
+    r = requests.get(url)
+    with open(path, "wb") as f:
+        f.write(r.content)
 
 
 def crawl():
     logging.info("Starting API crawl")
-
     ensure_dirs()
 
-    horses = process_horses()
-    cards = process_support_cards()
+    api_horses = fetch(f"{API_BASE}/character")
+    api_cards = fetch(f"{API_BASE}/support")
+
+    global_horses = get_global_character_names()
+    global_cards = get_global_support_names()
+
+    filtered_horses = []
+    filtered_cards = []
+
+    # HORSES
+    for h in api_horses:
+        name = h.get("name", "").lower()
+        if name in global_horses:
+            img = h.get("image")
+            img_path = os.path.join(HORSE_IMG_DIR, f"{h['id']}.png")
+            download_image(img, img_path)
+            time.sleep(RATE_DELAY)
+
+            filtered_horses.append({
+                "id": h["id"],
+                "name": h["name"],
+                "rarity": h.get("rarity"),
+                "image": img_path
+            })
+
+    # SUPPORT CARDS
+    seen = set()
+
+    for c in api_cards:
+        name = c.get("name", "").lower()
+        card_type = c.get("type", "")
+        key = f"{name}-{card_type}"
+
+        if name in global_cards and key not in seen:
+            seen.add(key)
+
+            img = c.get("image")
+            img_path = os.path.join(CARD_IMG_DIR, f"{c['id']}.png")
+            download_image(img, img_path)
+            time.sleep(RATE_DELAY)
+
+            filtered_cards.append({
+                "id": c["id"],
+                "name": c["name"],
+                "rarity": c.get("rarity"),
+                "type": card_type,
+                "stats": c.get("stats", {}),
+                "image": img_path
+            })
 
     result = {
-        "horses": horses,
-        "cards": cards
+        "horses": filtered_horses,
+        "cards": filtered_cards
     }
 
     with open(os.path.join(DATA_DIR, "data.json"), "w", encoding="utf-8") as f:
-        json.dump(result, f, indent=2, ensure_ascii=False)
+        json.dump(result, f, indent=2)
 
-    horse_count = len(horses)
-    card_count = len(cards)
-
-    logging.info(f"Crawl complete. Horses: {horse_count} Cards: {card_count}")
-
-    return horse_count, card_count
+    logging.info(f"Crawl complete. Horses: {len(filtered_horses)} Cards: {len(filtered_cards)}")
