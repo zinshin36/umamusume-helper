@@ -16,8 +16,7 @@ for d in (DATA_DIR, IMG_DIR, HORSE_DIR, SUPPORT_DIR):
     os.makedirs(d, exist_ok=True)
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0",
-    "Accept": "application/json"
+    "User-Agent": "Mozilla/5.0"
 }
 
 TIMEOUT = 15
@@ -38,11 +37,13 @@ def safe_json(url):
 def download_image(url, path):
     try:
         r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
-        if r.status_code == 200:
+        if r.status_code == 200 and r.content:
             with open(path, "wb") as f:
                 f.write(r.content)
+        else:
+            logging.error(f"Image failed: {url}")
     except Exception as e:
-        logging.error(f"Image download failed: {url} | {e}")
+        logging.error(f"Image error: {url} | {e}")
 
 
 def crawl(progress_callback=None, status_callback=None):
@@ -62,7 +63,7 @@ def crawl(progress_callback=None, status_callback=None):
     char_list = safe_json(f"{BASE}/character/list")
 
     if not char_list:
-        logging.error("Character list endpoint failed.")
+        logging.error("Character list failed.")
         return
 
     total_chars = len(char_list)
@@ -75,17 +76,11 @@ def crawl(progress_callback=None, status_callback=None):
         if not char_id or not name:
             continue
 
-        # Get image info
-        img_info = safe_json(f"{BASE}/character/images/{char_id}")
-        img_url = None
-
-        if img_info and isinstance(img_info, list) and len(img_info) > 0:
-            # Use first image entry
-            img_url = img_info[0].get("image_url")
-
+        # Direct icon path
+        img_url = f"https://umapyoi.net/icon/character/{char_id}.png"
         img_path = HORSE_DIR / f"{char_id}.png"
 
-        if img_url and not img_path.exists():
+        if not img_path.exists():
             download_image(img_url, img_path)
 
         horses.append({
@@ -107,7 +102,7 @@ def crawl(progress_callback=None, status_callback=None):
     support_ids = safe_json(f"{BASE}/support")
 
     if not support_ids:
-        logging.error("Support ID endpoint failed.")
+        logging.error("Support list failed.")
         return
 
     total_support = len(support_ids)
@@ -115,12 +110,8 @@ def crawl(progress_callback=None, status_callback=None):
     for i, s in enumerate(support_ids):
 
         support_id = s.get("id")
-
         if not support_id:
             continue
-
-        if status_callback:
-            status_callback(f"Fetching support {i+1}/{total_support}")
 
         detail = safe_json(f"{BASE}/support/{support_id}")
         if not detail:
@@ -129,10 +120,11 @@ def crawl(progress_callback=None, status_callback=None):
         name = detail.get("name_en") or detail.get("name")
         support_type = detail.get("type")
 
-        img_url = detail.get("image_url")
+        # Direct icon path
+        img_url = f"https://umapyoi.net/icon/support/{support_id}.png"
         img_path = SUPPORT_DIR / f"{support_id}.png"
 
-        if img_url and not img_path.exists():
+        if not img_path.exists():
             download_image(img_url, img_path)
 
         cards.append({
@@ -147,10 +139,6 @@ def crawl(progress_callback=None, status_callback=None):
 
         if progress_callback:
             progress_callback("Support Cards", i + 1, total_support)
-
-    # ==========================================================
-    # SAVE
-    # ==========================================================
 
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump({"horses": horses, "cards": cards}, f, indent=2)
