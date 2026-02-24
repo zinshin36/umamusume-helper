@@ -13,7 +13,7 @@ SUPPORT_URL = urljoin(BASE_URL, "Game:List_of_Support_Cards")
 CRAWL_DELAY = 2  # Respect robots.txt
 
 HEADERS = {
-    "User-Agent": "UmamusumeBuilderBot/1.0 (respectful crawler; contact: your-email@example.com)"
+    "User-Agent": "UmamusumeBuilderBot/1.0"
 }
 
 logging.basicConfig(
