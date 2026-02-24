@@ -1,6 +1,5 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-from PIL import Image, ImageTk
 import json
 import os
 import threading
@@ -14,14 +13,12 @@ class App:
     def __init__(self, root):
         self.root = root
         self.root.title("Uma Deck Builder")
-        self.root.geometry("1200x800")
+        self.root.geometry("1000x600")
 
         self.data = {"horses": [], "cards": []}
 
         self.build_layout()
         self.load_data()
-
-    # ---------------- UI ----------------
 
     def build_layout(self):
 
@@ -48,9 +45,7 @@ class App:
         self.status_label.pack(side="left", padx=10)
 
         self.count_label = ttk.Label(self.root, text="Horses: 0 | Cards: 0")
-        self.count_label.pack()
-
-    # ---------------- DATA ----------------
+        self.count_label.pack(pady=10)
 
     def load_data(self):
         if os.path.exists(DATA_FILE):
@@ -62,8 +57,6 @@ class App:
         self.count_label.config(
             text=f"Horses: {len(self.data['horses'])} | Cards: {len(self.data['cards'])}"
         )
-
-    # ---------------- UPDATE ----------------
 
     def update_data(self):
 
@@ -78,7 +71,6 @@ class App:
             self.progress["value"] = current
             self.percent_label.config(text=f"{percent}%")
             self.status_label.config(text=f"{section}: {current}/{total}")
-
             self.root.update_idletasks()
 
         def status(text):
@@ -89,6 +81,13 @@ class App:
             try:
                 crawl(progress_callback=progress, status_callback=status)
                 self.load_data()
+
+                if len(self.data["horses"]) == 0 and len(self.data["cards"]) == 0:
+                    messagebox.showwarning(
+                        "API Warning",
+                        "API returned 0 horses and 0 cards.\nCheck app.log for details."
+                    )
+
             except Exception as e:
                 messagebox.showerror("Error", str(e))
             finally:
