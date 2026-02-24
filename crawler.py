@@ -1,148 +1,91 @@
+import requests
 import time
 import logging
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
-from pathlib import Path
-import cloudscraper
+import json
+import os
 
-BASE = "https://umamusu.wiki"
+BASE_URL = "https://umamusu.wiki/"
+TRAINEES_URL = urljoin(BASE_URL, "Game:List_of_Trainees")
+SUPPORT_URL = urljoin(BASE_URL, "Game:List_of_Support_Cards")
 
-HORSE_LIST = BASE + "/Game:List_of_Trainees"
-SUPPORT_LIST = BASE + "/Game:List_of_Support_Cards"
+CRAWL_DELAY = 2  # Respect robots.txt
 
-# Cloudflare-safe session
-scraper = cloudscraper.create_scraper(
-    browser={
-        'browser': 'chrome',
-        'platform': 'windows',
-        'mobile': False
-    }
+HEADERS = {
+    "User-Agent": "UmamusumeBuilderBot/1.0 (respectful crawler; contact: your-email@example.com)"
+}
+
+logging.basicConfig(
+    filename="app.log",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
 
-def get_character_links(list_url):
-    logging.info(f"Fetching list page: {list_url}")
+def fetch_page(url):
+    logging.info(f"Fetching: {url}")
+    response = requests.get(url, headers=HEADERS, timeout=30)
 
-    r = scraper.get(list_url, timeout=60)
-
-    if r.status_code != 200:
-        logging.warning(f"Failed request: {r.status_code}")
-        return []
-
-    soup = BeautifulSoup(r.text, "lxml")
-
-    links = []
-
-    # Find all character links in page content
-    content = soup.find("div", {"id": "mw-content-text"})
-    if not content:
-        logging.warning("No content div found")
-        return []
-
-    for a in content.find_all("a", href=True):
-        href = a["href"]
-
-        if not href.startswith("/wiki/"):
-            continue
-
-        if ":" in href:
-            continue
-
-        full = urljoin(BASE, href)
-        links.append(full)
-
-    links = list(set(links))
-
-    logging.info(f"Found {len(links)} links")
-    return links
-
-
-def scrape_profile(url, save_dir: Path):
-    try:
-        r = scraper.get(url, timeout=60)
-
-        if r.status_code != 200:
-            return None
-
-        soup = BeautifulSoup(r.text, "lxml")
-
-        title = soup.find("h1")
-        if not title:
-            return None
-
-        name = title.get_text(strip=True)
-
-        infobox = soup.find("table", class_="infobox")
-        if not infobox:
-            return None
-
-        img = infobox.find("img")
-        if not img:
-            return None
-
-        img_url = img.get("src")
-
-        if img_url.startswith("//"):
-            img_url = "https:" + img_url
-
-        filename = name.replace("/", "_").replace(" ", "_") + ".png"
-        path = save_dir / filename
-
-        if not path.exists():
-            img_data = scraper.get(img_url, timeout=60)
-            if img_data.status_code == 200:
-                with open(path, "wb") as f:
-                    f.write(img_data.content)
-
-        return {
-            "name": name,
-            "image": str(path)
-        }
-
-    except Exception as e:
-        logging.warning(f"Failed scraping {url}: {e}")
+    if response.status_code != 200:
+        logging.warning(f"Failed request: {response.status_code}")
         return None
 
-
-def crawl_section(list_url, save_dir: Path, progress_callback, label):
-
-    links = get_character_links(list_url)
-    results = []
-
-    total = len(links)
-
-    if total == 0:
-        logging.warning("No links found — Cloudflare likely blocking.")
-        return results
-
-    for i, link in enumerate(links, start=1):
-
-        result = scrape_profile(link, save_dir)
-        if result:
-            results.append(result)
-
-        percent = int((i / total) * 100)
-        progress_callback(percent, f"{label}: {percent}%")
-
-        # Slow crawl (you said speed doesn't matter)
-        time.sleep(2)
-
-    return results
+    return response.text
 
 
-def crawl_all(base_dir: Path, progress_callback):
+def extract_links(html):
+    soup = BeautifulSoup(html, "lxml")
+    links = []
 
-    horse_dir = base_dir / "data" / "images" / "horses"
-    support_dir = base_dir / "data" / "images" / "support"
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
 
+        if href.startswith("/Game:") and ":" not in href[6:]:
+            full_url = urljoin(BASE_URL, href)
+            links.append(full_url)
+
+    return list(set(links))
+
+
+def crawl():
     logging.info("Starting crawl")
 
-    horses = crawl_section(HORSE_LIST, horse_dir, progress_callback, "Horses")
-    cards = crawl_section(SUPPORT_LIST, support_dir, progress_callback, "Support")
-
-    logging.info(f"Crawl complete. Horses: {len(horses)} Cards: {len(cards)}")
-
-    return {
-        "horses": horses,
-        "cards": cards
+    data = {
+        "horses": [],
+        "cards": []
     }
+
+    # Crawl trainees
+    html = fetch_page(TRAINEES_URL)
+    if html:
+        links = extract_links(html)
+        logging.info(f"Found {len(links)} trainee links")
+
+        for link in links:
+            data["horses"].append(link)
+            time.sleep(CRAWL_DELAY)
+
+    time.sleep(CRAWL_DELAY)
+
+    # Crawl support cards
+    html = fetch_page(SUPPORT_URL)
+    if html:
+        links = extract_links(html)
+        logging.info(f"Found {len(links)} support card links")
+
+        for link in links:
+            data["cards"].append(link)
+            time.sleep(CRAWL_DELAY)
+
+    with open("data.json", "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+    logging.info(
+        f"Crawl complete. Horses: {len(data['horses'])} Cards: {len(data['cards'])}"
+    )
+
+
+if __name__ == "__main__":
+    logging.info("Application started")
+    crawl()
