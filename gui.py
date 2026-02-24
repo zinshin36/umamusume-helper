@@ -1,71 +1,63 @@
 import tkinter as tk
 from tkinter import messagebox
 from PIL import Image, ImageTk
-import json
-import os
 
 from crawler import crawl
-from recommendation_engine import recommend
-from data_manager import toggle_blacklist, set_stars, load_state
-
-
-DATA_FILE = "data/data.json"
+from data_manager import ensure_data_exists, load_data, toggle_blacklist, set_stars, load_state
+from recommendation_engine import recommend_deck, recommend_legacy
 
 
 class App:
 
     def __init__(self, root):
         self.root = root
-        self.root.title("Uma Builder")
+        self.root.title("Uma Smart Builder")
 
-        self.load_data()
+        ensure_data_exists(crawl)
+        self.data = load_data()
 
         self.build_ui()
-
-    def load_data(self):
-        with open(DATA_FILE, "r") as f:
-            self.data = json.load(f)
 
     def build_ui(self):
         top = tk.Frame(self.root)
         top.pack()
 
-        update_btn = tk.Button(top, text="Update", command=self.update_data)
-        update_btn.pack(side=tk.LEFT)
+        tk.Button(top, text="Update", command=self.update_data).pack()
 
-        self.horse_frame = tk.Frame(self.root)
-        self.horse_frame.pack()
+        self.grid_frame = tk.Frame(self.root)
+        self.grid_frame.pack()
 
         self.display_horses()
 
     def display_horses(self):
-        for widget in self.horse_frame.winfo_children():
-            widget.destroy()
+        for w in self.grid_frame.winfo_children():
+            w.destroy()
 
         for i, horse in enumerate(self.data["horses"]):
             img = Image.open(horse["image"]).resize((80, 80))
             photo = ImageTk.PhotoImage(img)
 
-            btn = tk.Button(self.horse_frame, image=photo,
-                            command=lambda h=horse: self.select_horse(h))
+            btn = tk.Button(self.grid_frame, image=photo,
+                            command=lambda h=horse: self.open_builder(h))
             btn.image = photo
             btn.grid(row=i // 6, column=i % 6)
 
-    def select_horse(self, horse):
-        rec = recommend(horse, self.data["cards"])
-        self.show_recommendations(rec)
-
-    def show_recommendations(self, cards):
+    def open_builder(self, horse):
         win = tk.Toplevel(self.root)
-        win.title("Recommended")
+        win.title(horse["name"])
+
+        deck = recommend_deck(horse, self.data["cards"])
+        legacy = recommend_legacy(horse, self.data["horses"])
+
+        tk.Label(win, text="Recommended Deck").pack()
 
         state = load_state()
 
-        for i, card in enumerate(cards):
+        for card in deck:
             frame = tk.Frame(win)
-            frame.grid(row=i, column=0)
+            frame.pack()
 
-            img = Image.open(card["image"]).resize((80, 80))
+            img = Image.open(card["image"]).resize((70, 70))
             photo = ImageTk.PhotoImage(img)
 
             btn = tk.Button(frame, image=photo)
@@ -75,17 +67,20 @@ class App:
             if card["id"] in state["blacklist"]:
                 btn.config(state="disabled")
 
-            blacklist_btn = tk.Button(frame, text="Blacklist",
-                                       command=lambda cid=card["id"]: toggle_blacklist(cid))
-            blacklist_btn.pack(side=tk.LEFT)
+            tk.Button(frame, text="Blacklist",
+                      command=lambda cid=card["id"]: toggle_blacklist(cid)).pack(side=tk.LEFT)
 
-            star_btn = tk.Button(frame, text="Add Star",
-                                 command=lambda cid=card["id"]: set_stars(cid, 5))
-            star_btn.pack(side=tk.LEFT)
+            tk.Button(frame, text="⭐ +1",
+                      command=lambda cid=card["id"]: set_stars(cid, 5)).pack(side=tk.LEFT)
+
+        tk.Label(win, text="Recommended Legacy").pack()
+
+        for parent in legacy:
+            tk.Label(win, text=parent["name"]).pack()
 
     def update_data(self):
         crawl()
-        self.load_data()
+        self.data = load_data()
         self.display_horses()
         messagebox.showinfo("Done", "Updated successfully")
 
