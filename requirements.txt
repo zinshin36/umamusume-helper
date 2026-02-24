@@ -4,3 +4,4 @@ lxml
 html5lib
 pillow
 tqdm
+cloudscraper
