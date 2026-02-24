@@ -1,6 +1,5 @@
 import tkinter as tk
 from tkinter import ttk
-from PIL import Image, ImageTk
 import threading
 import json
 import os
@@ -10,59 +9,65 @@ from crawler import crawl
 
 DATA_FILE = "data/data.json"
 
+SCENARIOS = [
+    "URA",
+    "Aoharu",
+    "Grand Live",
+    "Make a New Track",
+    "Project L'Arc"
+]
+
+
 class App:
 
     def __init__(self, root):
         self.root = root
         root.title("Uma Planner")
-
-        self.images = {}
-        self.selected_card = None
+        root.geometry("600x500")
 
         self.top = ttk.Frame(root)
-        self.top.pack(fill="x")
+        self.top.pack(fill="x", pady=5)
 
         self.update_btn = ttk.Button(self.top, text="Update Database", command=self.update_db)
-        self.update_btn.pack(side="left")
+        self.update_btn.pack(side="left", padx=5)
 
-        self.progress_var = tk.DoubleVar()
+        self.progress_var = tk.IntVar()
         self.progress = ttk.Progressbar(self.top, maximum=100, variable=self.progress_var)
         self.progress.pack(fill="x", expand=True, padx=5)
 
         self.status = ttk.Label(root, text="Ready")
-        self.status.pack()
+        self.status.pack(pady=5)
+
+        self.scenario_var = tk.StringVar()
+        self.scenario_box = ttk.Combobox(root, textvariable=self.scenario_var, state="readonly")
+        self.scenario_box["values"] = SCENARIOS
+        self.scenario_box.current(0)
+        self.scenario_box.pack(pady=5)
+
+        self.horse_var = tk.StringVar()
+        self.horse_box = ttk.Combobox(root, textvariable=self.horse_var, state="readonly")
+        self.horse_box.pack(pady=5)
 
         self.count_label = ttk.Label(root, text="Horses: 0 Cards: 0")
-        self.count_label.pack()
-
-        self.canvas = tk.Canvas(root)
-        self.scroll = ttk.Scrollbar(root, orient="vertical", command=self.canvas.yview)
-        self.frame = ttk.Frame(self.canvas)
-
-        self.frame.bind(
-            "<Configure>",
-            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-        )
-
-        self.canvas.create_window((0,0), window=self.frame, anchor="nw")
-        self.canvas.configure(yscrollcommand=self.scroll.set)
-
-        self.canvas.pack(side="left", fill="both", expand=True)
-        self.scroll.pack(side="right", fill="y")
+        self.count_label.pack(pady=5)
 
         self.load_data()
 
-    def update_progress(self, current, total):
-        percent = (current / total) * 100
+    def update_progress(self, percent):
         self.progress_var.set(percent)
-        self.status.config(text=f"{int(percent)}%")
+
+    def update_status(self, text):
+        self.status.config(text=text)
 
     def update_db(self):
-        threading.Thread(target=self.run_crawl).start()
+        self.update_btn.config(state="disabled")
+        self.status.config(text="Starting crawl...")
+        threading.Thread(target=self.run_crawl, daemon=True).start()
 
     def run_crawl(self):
-        crawl(progress=self.update_progress)
+        crawl(progress=self.update_progress, status=self.update_status)
         self.load_data()
+        self.update_btn.config(state="normal")
 
     def load_data(self):
         if not os.path.exists(DATA_FILE):
@@ -76,52 +81,14 @@ class App:
 
         self.count_label.config(text=f"Horses: {len(horses)} Cards: {len(cards)}")
 
-        for widget in self.frame.winfo_children():
-            widget.destroy()
+        horse_names = [h["name"] for h in horses]
+        self.horse_box["values"] = horse_names
 
-        row = 0
-        col = 0
-
-        for card in cards:
-
-            path = card["image"]
-            if not os.path.exists(path):
-                continue
-
-            img = Image.open(path).resize((100, 100))
-            photo = ImageTk.PhotoImage(img)
-            self.images[card["id"]] = photo
-
-            lbl = tk.Label(self.frame, image=photo, borderwidth=2, relief="solid")
-            lbl.grid(row=row, column=col, padx=5, pady=5)
-
-            lbl.bind("<Button-1>", lambda e, c=card: self.select_card(c))
-            lbl.bind("<Button-3>", lambda e, c=card: self.toggle_blacklist(c))
-
-            col += 1
-            if col >= 6:
-                col = 0
-                row += 1
-
-    def select_card(self, card):
-        self.status.config(text=f"Selected: {card['name']}")
-
-    def toggle_blacklist(self, card):
-        card["blacklisted"] = not card.get("blacklisted", False)
-        self.status.config(text=f"Blacklisted: {card['name']} = {card['blacklisted']}")
-        self.save_changes()
-
-    def save_changes(self):
-        with open(DATA_FILE, "r+", encoding="utf-8") as f:
-            data = json.load(f)
-            for c in data["cards"]:
-                if c["id"] in self.images:
-                    c["blacklisted"] = c.get("blacklisted", False)
-            f.seek(0)
-            json.dump(data, f, indent=2)
-            f.truncate()
+        if horse_names:
+            self.horse_box.current(0)
 
 
-root = tk.Tk()
-app = App(root)
-root.mainloop()
+def start_app():
+    root = tk.Tk()
+    App(root)
+    root.mainloop()
