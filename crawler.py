@@ -55,7 +55,9 @@ def crawl():
         "horses": [],
         "cards": []
     }
-
+    with open("debug.html", "w", encoding="utf-8") as f:
+    f.write(html)
+    
     # Crawl trainees
     html = fetch_page(TRAINEES_URL)
     if html:
