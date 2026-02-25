@@ -22,21 +22,14 @@ def crawl(progress_callback=None, status_callback=None):
     horses = []
     cards = []
 
-    # ---------------------------------------------------
-    # GET HORSES
-    # ---------------------------------------------------
-
-    if status_callback:
-        status_callback("Fetching horses...")
+    # ---------------- HORSES ----------------
 
     horse_res = requests.get(CHARA_API)
     horse_data = horse_res.json()
 
-    total_steps = len(horse_data)
-    step = 0
+    total_horses = len(horse_data)
 
-    for h in horse_data:
-        step += 1
+    for index, h in enumerate(horse_data, start=1):
 
         horse_id = h["id"]
         name = h["name_en"]
@@ -44,46 +37,40 @@ def crawl(progress_callback=None, status_callback=None):
         horses.append({
             "id": horse_id,
             "name": name,
-            "preferred_stat": "Speed"  # fallback
+            "preferred_stat": "Speed"
         })
 
+        if status_callback:
+            status_callback(f"Fetching horses {index}/{total_horses}")
+
         if progress_callback:
-            percent = int((step / total_steps) * 30)
+            percent = int((index / total_horses) * 40)
             progress_callback(percent)
 
-    # ---------------------------------------------------
-    # GET SUPPORT CARDS
-    # ---------------------------------------------------
-
-    if status_callback:
-        status_callback("Fetching support cards...")
+    # ---------------- SUPPORTS ----------------
 
     support_res = requests.get(SUPPORT_API)
     support_data = support_res.json()
 
     total_support = len(support_data)
-    support_step = 0
 
-    for s in support_data:
-
-        support_step += 1
+    for index, s in enumerate(support_data, start=1):
 
         support_id = s["id"]
         name = s["name_en"]
         rarity = s.get("rarity", "SR")
         card_type = s.get("type", "Speed")
 
-        # Image download
         img_url = f"https://gametora.com/images/umamusume/supports/tex_support_card_{support_id}.png"
         img_path = os.path.join(SUPPORT_IMG_DIR, f"{support_id}.png")
 
         try:
-            r = requests.get(img_url, timeout=5)
+            r = requests.get(img_url, timeout=10)
             if r.status_code == 200:
                 with open(img_path, "wb") as f:
                     f.write(r.content)
         except:
-            pass
+            logging.warning(f"Image failed: {support_id}")
 
         cards.append({
             "id": support_id,
@@ -96,12 +83,12 @@ def crawl(progress_callback=None, status_callback=None):
             "blacklisted": False
         })
 
-        if progress_callback:
-            percent = 30 + int((support_step / total_support) * 70)
-            progress_callback(percent)
-
         if status_callback:
-            status_callback(f"Downloading supports {support_step}/{total_support}")
+            status_callback(f"Downloading supports {index}/{total_support}")
+
+        if progress_callback:
+            percent = 40 + int((index / total_support) * 60)
+            progress_callback(percent)
 
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump({"horses": horses, "cards": cards}, f, indent=2)
