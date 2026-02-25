@@ -3,10 +3,14 @@ from tkinter import ttk, messagebox
 from PIL import Image, ImageTk
 import threading
 import os
+import logging
 
 from api import UmaAPI
 from optimizer import DeckOptimizer
 from data_manager import DataManager
+
+
+logger = logging.getLogger(__name__)
 
 
 class UmaPlannerGUI:
@@ -25,7 +29,7 @@ class UmaPlannerGUI:
         self.refresh_dropdowns()
         self.load_support_tab()
 
-    # ================= UI =================
+    # ================= UI BUILD =================
 
     def build_ui(self):
 
@@ -45,39 +49,35 @@ class UmaPlannerGUI:
 
     def build_deck_tab(self):
 
-        top_frame = ttk.Frame(self.deck_frame)
-        top_frame.pack(fill="x", pady=5)
+        top = ttk.Frame(self.deck_frame)
+        top.pack(fill="x", pady=5)
 
-        self.update_btn = ttk.Button(
-            top_frame,
-            text="Update Database",
-            command=self.start_update
-        )
+        self.update_btn = ttk.Button(top, text="Update Database", command=self.start_update)
         self.update_btn.pack(side="left", padx=5)
 
-        self.progress = ttk.Progressbar(top_frame, length=400, maximum=100)
+        self.progress = ttk.Progressbar(top, length=400, maximum=100)
         self.progress.pack(side="left", padx=10)
 
-        self.status_label = ttk.Label(top_frame, text="Ready")
+        self.status_label = ttk.Label(top, text="Ready")
         self.status_label.pack(side="left")
 
-        options_frame = ttk.Frame(self.deck_frame)
-        options_frame.pack(pady=10)
+        options = ttk.Frame(self.deck_frame)
+        options.pack(pady=10)
 
-        ttk.Label(options_frame, text="Scenario").grid(row=0, column=0)
+        ttk.Label(options, text="Scenario").grid(row=0, column=0)
         self.scenario_var = tk.StringVar(value="Aoharu")
         self.scenario_dropdown = ttk.Combobox(
-            options_frame,
+            options,
             textvariable=self.scenario_var,
             values=["Aoharu", "URA", "Grand Live"],
             state="readonly"
         )
         self.scenario_dropdown.grid(row=0, column=1)
 
-        ttk.Label(options_frame, text="Horse").grid(row=1, column=0)
+        ttk.Label(options, text="Horse").grid(row=1, column=0)
         self.horse_var = tk.StringVar()
         self.horse_dropdown = ttk.Combobox(
-            options_frame,
+            options,
             textvariable=self.horse_var,
             state="readonly"
         )
@@ -85,13 +85,13 @@ class UmaPlannerGUI:
 
         self.simulation_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(
-            options_frame,
+            options,
             text="Simulation Mode (Competitive)",
             variable=self.simulation_var
         ).grid(row=2, columnspan=2, pady=5)
 
         ttk.Button(
-            options_frame,
+            options,
             text="Recommend Best Deck",
             command=self.recommend_deck
         ).grid(row=3, columnspan=2, pady=10)
@@ -104,11 +104,7 @@ class UmaPlannerGUI:
     def build_support_tab(self):
 
         canvas = tk.Canvas(self.support_tab)
-        scrollbar = ttk.Scrollbar(
-            self.support_tab,
-            orient="vertical",
-            command=canvas.yview
-        )
+        scrollbar = ttk.Scrollbar(self.support_tab, orient="vertical", command=canvas.yview)
 
         self.support_container = ttk.Frame(canvas)
 
@@ -123,7 +119,7 @@ class UmaPlannerGUI:
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-    # ================= UPDATE =================
+    # ================= DATABASE UPDATE =================
 
     def start_update(self):
 
@@ -150,6 +146,8 @@ class UmaPlannerGUI:
             self.root.after(0, self.update_complete)
 
         except Exception as e:
+
+            logger.error(f"API Error: {e}")
 
             def fail():
                 self.status_label.config(text="API Error")
@@ -180,12 +178,13 @@ class UmaPlannerGUI:
     def refresh_dropdowns(self):
 
         horse_names = [h["name"] for h in self.horses]
+
         self.horse_dropdown["values"] = horse_names
 
         if horse_names:
             self.horse_dropdown.current(0)
 
-    # ================= RECOMMEND =================
+    # ================= RECOMMEND DECK =================
 
     def recommend_deck(self):
 
@@ -193,10 +192,13 @@ class UmaPlannerGUI:
             messagebox.showerror("Error", "Database not loaded")
             return
 
-        selected_horse_name = self.horse_var.get()
-        selected_horse = next(
-            h for h in self.horses if h["name"] == selected_horse_name
-        )
+        selected_name = self.horse_var.get()
+
+        if not selected_name:
+            messagebox.showerror("Error", "Select a horse")
+            return
+
+        selected_horse = next(h for h in self.horses if h["name"] == selected_name)
 
         optimizer = DeckOptimizer(
             self.supports,
@@ -216,7 +218,7 @@ class UmaPlannerGUI:
             label.image = img
             label.grid(row=0, column=i, padx=10)
 
-    # ================= SUPPORT TAB =================
+    # ================= SUPPORT TAB RENDER =================
 
     def load_support_tab(self):
 
@@ -239,12 +241,12 @@ class UmaPlannerGUI:
             ).pack()
 
             btn_text = "Unblacklist" if support.get("blacklisted") else "Blacklist"
-            btn = ttk.Button(
+
+            ttk.Button(
                 frame,
                 text=btn_text,
                 command=lambda s=support: self.toggle_blacklist(s)
-            )
-            btn.pack(pady=5)
+            ).pack(pady=5)
 
     def toggle_blacklist(self, support):
 
@@ -252,7 +254,7 @@ class UmaPlannerGUI:
         self.data_manager.save(self.horses, self.supports)
         self.load_support_tab()
 
-    # ================= IMAGE =================
+    # ================= IMAGE LOADER =================
 
     def load_image(self, path):
 
@@ -271,7 +273,8 @@ class UmaPlannerGUI:
         return tk_img
 
 
-# 🔥 THIS FIXES YOUR IMPORT ERROR
+# ================= ENTRY POINT =================
+
 def start_app():
     root = tk.Tk()
     UmaPlannerGUI(root)
