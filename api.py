@@ -1,12 +1,14 @@
 import requests
 import logging
 import time
+import os
 
 BASE = "https://umapyoi.net/api/v1"
+IMAGE_BASE = "https://umapyoi.net"
+
+REQUEST_DELAY = 0.12
 
 logger = logging.getLogger(__name__)
-
-REQUEST_DELAY = 0.12  # stays under 10 req/sec
 
 
 class UmaAPI:
@@ -17,14 +19,30 @@ class UmaAPI:
     # ================= SAFE REQUEST =================
 
     def fetch_json(self, url):
+        r = requests.get(url, timeout=20)
+        r.raise_for_status()
+        time.sleep(REQUEST_DELAY)
+        return r.json()
+
+    # ================= IMAGE DOWNLOAD =================
+
+    def download_image(self, url, save_path):
+
+        if not url:
+            return
+
+        if os.path.exists(save_path):
+            return
+
         try:
             r = requests.get(url, timeout=20)
             r.raise_for_status()
-            time.sleep(REQUEST_DELAY)
-            return r.json()
+
+            with open(save_path, "wb") as f:
+                f.write(r.content)
+
         except Exception as e:
-            logger.error(f"Request failed: {url} | {e}")
-            raise RuntimeError(f"API request failed: {url}")
+            logger.error(f"Image download failed: {url} | {e}")
 
     # ================= HORSES =================
 
@@ -32,24 +50,26 @@ class UmaAPI:
 
         data = self.fetch_json(f"{BASE}/character")
 
-        if not isinstance(data, list):
-            raise RuntimeError("Unexpected /character structure")
-
         horses = []
         total = len(data)
 
         for idx, entry in enumerate(data):
 
             char_id = entry.get("id") or entry.get("chara_id")
-            name = entry.get("name_en") or entry.get("name")
 
-            if not char_id:
+            name = (
+                entry.get("name_en")
+                or entry.get("name")
+                or entry.get("title_en")
+            )
+
+            if not char_id or not name:
                 continue
 
             horses.append({
                 "id": char_id,
-                "name": name if name else f"ID {char_id}",
-                "preferred_stat": "Speed"  # phase 3: real stat logic
+                "name": name,
+                "preferred_stat": "Speed"
             })
 
             if self.progress_callback and idx % 10 == 0:
@@ -64,20 +84,14 @@ class UmaAPI:
     # ================= SUPPORT LIST =================
 
     def fetch_support_list(self):
+        return self.fetch_json(f"{BASE}/support")
 
-        data = self.fetch_json(f"{BASE}/support")
-
-        if not isinstance(data, list):
-            raise RuntimeError("Unexpected /support structure")
-
-        return data
-
-    # ================= FULL SUPPORT DETAIL =================
+    # ================= SUPPORT DETAIL =================
 
     def fetch_support_detail(self, support_id):
         return self.fetch_json(f"{BASE}/support/{support_id}")
 
-    # ================= SUPPORTS FULL BUILD =================
+    # ================= FULL SUPPORT BUILD =================
 
     def fetch_all_supports(self):
 
@@ -85,6 +99,8 @@ class UmaAPI:
         total = len(support_list)
 
         supports = []
+
+        os.makedirs("data/images/support", exist_ok=True)
 
         for idx, entry in enumerate(support_list):
 
@@ -95,10 +111,8 @@ class UmaAPI:
             detail = self.fetch_support_detail(support_id)
 
             rarity = detail.get("rarity", "R")
-
-            support_type = detail.get("support_type") or detail.get("type") or "Speed"
-
-            event_bonus = detail.get("event_bonus") or 0
+            support_type = detail.get("support_type", "Speed")
+            event_bonus = detail.get("event_bonus", 0)
 
             skills = []
             for skill in detail.get("skills", []):
@@ -110,8 +124,15 @@ class UmaAPI:
                 detail.get("title_en")
                 or detail.get("name_en")
                 or entry.get("title_en")
-                or f"ID {support_id}"
             )
+
+            image_url = detail.get("image")
+            if image_url:
+                image_url = IMAGE_BASE + image_url
+
+            image_path = f"data/images/support/{support_id}.png"
+
+            self.download_image(image_url, image_path)
 
             supports.append({
                 "id": support_id,
@@ -120,12 +141,12 @@ class UmaAPI:
                 "type": support_type,
                 "event_bonus": event_bonus,
                 "skills": skills,
-                "image": f"data/images/support/{support_id}.png",
+                "image": image_path,
                 "blacklisted": False
             })
 
             if self.progress_callback and idx % 5 == 0:
-                percent = 25 + int((idx / total) * 70)
+                percent = 30 + int((idx / total) * 65)
                 self.progress_callback(
                     f"Fetching supports {idx}/{total}",
                     percent
