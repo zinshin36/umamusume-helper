@@ -1,94 +1,134 @@
-import random
-from collections import defaultdict
+import requests
+import logging
+import time
 
-RARITY_WEIGHT = {
-    "SSR": 1.0,
-    "SR": 0.75,
-    "R": 0.45
-}
+BASE = "https://umapyoi.net/api/v1"
 
-SCENARIO_STAT_CAPS = {
-    "Aoharu": {"Speed": 1200, "Stamina": 1200, "Power": 1200, "Guts": 1200, "Wisdom": 1200},
-    "URA": {"Speed": 1200, "Stamina": 1200, "Power": 1200, "Guts": 1200, "Wisdom": 1200},
-    "Grand Live": {"Speed": 1600, "Stamina": 1600, "Power": 1600, "Guts": 1600, "Wisdom": 1600},
-}
+logger = logging.getLogger(__name__)
 
-class DeckOptimizer:
+REQUEST_DELAY = 0.12  # stays under 10 req/sec
 
-    def __init__(self, supports, horse, scenario, simulation_mode=True):
-        self.supports = [s for s in supports if not s.get("blacklisted", False)]
-        self.horse = horse
-        self.scenario = scenario
-        self.simulation_mode = simulation_mode
-        self.stat_caps = SCENARIO_STAT_CAPS.get(scenario, SCENARIO_STAT_CAPS["URA"])
 
-    def score_support(self, support):
+class UmaAPI:
 
-        rarity_score = RARITY_WEIGHT.get(support["rarity"], 0.3)
+    def __init__(self, progress_callback=None):
+        self.progress_callback = progress_callback
 
-        preferred_stat = self.horse.get("preferred_stat", "Speed")
-        type_match = 1.3 if support["type"] == preferred_stat else 1.0
+    # ================= SAFE REQUEST =================
 
-        event_bonus_score = 1 + (support.get("event_bonus", 0) * 0.05)
+    def fetch_json(self, url):
+        try:
+            r = requests.get(url, timeout=20)
+            r.raise_for_status()
+            time.sleep(REQUEST_DELAY)
+            return r.json()
+        except Exception as e:
+            logger.error(f"Request failed: {url} | {e}")
+            raise RuntimeError(f"API request failed: {url}")
 
-        skill_score = len(support.get("skills", [])) * 0.03
+    # ================= HORSES =================
 
-        total_score = rarity_score * type_match * event_bonus_score + skill_score
+    def fetch_all_horses(self):
 
-        return total_score
+        data = self.fetch_json(f"{BASE}/character")
 
-    def avoid_duplicate_skills(self, deck):
-        seen = set()
-        filtered = []
-        for s in deck:
-            unique_skills = [sk for sk in s["skills"] if sk not in seen]
-            if unique_skills:
-                seen.update(unique_skills)
-                filtered.append(s)
-        return filtered
+        if not isinstance(data, list):
+            raise RuntimeError("Unexpected /character structure")
 
-    def simulate_training(self, deck):
+        horses = []
+        total = len(data)
 
-        stat_gain = defaultdict(int)
-        preferred_stat = self.horse.get("preferred_stat", "Speed")
+        for idx, entry in enumerate(data):
 
-        for s in deck:
-            base = 100
-            rarity_multiplier = RARITY_WEIGHT.get(s["rarity"], 0.4)
-            stat_gain[s["type"]] += int(base * rarity_multiplier)
+            char_id = entry.get("id") or entry.get("chara_id")
+            name = entry.get("name_en") or entry.get("name")
 
-        if preferred_stat in stat_gain:
-            stat_gain[preferred_stat] = int(stat_gain[preferred_stat] * 1.2)
-
-        total_score = 0
-        for stat, value in stat_gain.items():
-            cap = self.stat_caps.get(stat, 1200)
-            total_score += min(value, cap)
-
-        return total_score
-
-    def build_best_deck(self):
-
-        scored = [(s, self.score_support(s)) for s in self.supports]
-        scored.sort(key=lambda x: x[1], reverse=True)
-
-        if not self.simulation_mode:
-            return [s[0] for s in scored[:6]]
-
-        best_score = 0
-        best_deck = []
-
-        top_pool = [s[0] for s in scored[:18]]
-
-        for _ in range(3000):
-            candidate = random.sample(top_pool, 6)
-            candidate = self.avoid_duplicate_skills(candidate)
-            if len(candidate) < 6:
+            if not char_id:
                 continue
 
-            score = self.simulate_training(candidate)
-            if score > best_score:
-                best_score = score
-                best_deck = candidate
+            horses.append({
+                "id": char_id,
+                "name": name if name else f"ID {char_id}",
+                "preferred_stat": "Speed"  # phase 3: real stat logic
+            })
 
-        return best_deck
+            if self.progress_callback and idx % 10 == 0:
+                percent = 5 + int((idx / total) * 20)
+                self.progress_callback(
+                    f"Fetching horses {idx}/{total}",
+                    percent
+                )
+
+        return horses
+
+    # ================= SUPPORT LIST =================
+
+    def fetch_support_list(self):
+
+        data = self.fetch_json(f"{BASE}/support")
+
+        if not isinstance(data, list):
+            raise RuntimeError("Unexpected /support structure")
+
+        return data
+
+    # ================= FULL SUPPORT DETAIL =================
+
+    def fetch_support_detail(self, support_id):
+        return self.fetch_json(f"{BASE}/support/{support_id}")
+
+    # ================= SUPPORTS FULL BUILD =================
+
+    def fetch_all_supports(self):
+
+        support_list = self.fetch_support_list()
+        total = len(support_list)
+
+        supports = []
+
+        for idx, entry in enumerate(support_list):
+
+            support_id = entry.get("id")
+            if not support_id:
+                continue
+
+            detail = self.fetch_support_detail(support_id)
+
+            rarity = detail.get("rarity", "R")
+
+            support_type = detail.get("support_type") or detail.get("type") or "Speed"
+
+            event_bonus = detail.get("event_bonus") or 0
+
+            skills = []
+            for skill in detail.get("skills", []):
+                name = skill.get("name_en") or skill.get("name")
+                if name:
+                    skills.append(name)
+
+            name = (
+                detail.get("title_en")
+                or detail.get("name_en")
+                or entry.get("title_en")
+                or f"ID {support_id}"
+            )
+
+            supports.append({
+                "id": support_id,
+                "name": name,
+                "rarity": rarity,
+                "type": support_type,
+                "event_bonus": event_bonus,
+                "skills": skills,
+                "image": f"data/images/support/{support_id}.png",
+                "blacklisted": False
+            })
+
+            if self.progress_callback and idx % 5 == 0:
+                percent = 25 + int((idx / total) * 70)
+                self.progress_callback(
+                    f"Fetching supports {idx}/{total}",
+                    percent
+                )
+
+        return supports
