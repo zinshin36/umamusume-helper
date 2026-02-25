@@ -2,8 +2,7 @@ import requests
 import os
 import json
 import logging
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+import time
 
 DATA_FILE = "data/data.json"
 SUPPORT_IMG_DIR = "data/images/support"
@@ -11,34 +10,42 @@ SUPPORT_IMG_DIR = "data/images/support"
 CHARA_API = "https://umapyoi.net/api/v1/character"
 SUPPORT_API = "https://umapyoi.net/api/v1/support"
 
+# Safe rate limit: 5 requests per second
+REQUEST_DELAY = 0.20
+
 os.makedirs("data", exist_ok=True)
 os.makedirs(SUPPORT_IMG_DIR, exist_ok=True)
 
 
-def create_session():
-    session = requests.Session()
-
-    retries = Retry(
-        total=3,
-        backoff_factor=1,
-        status_forcelist=[429, 500, 502, 503, 504]
-    )
-
-    adapter = HTTPAdapter(max_retries=retries)
-    session.mount("http://", adapter)
-    session.mount("https://", adapter)
-
-    return session
-
-
-def safe_get_json(session, url):
+def safe_request(session, url):
     try:
-        response = session.get(url, timeout=(5, 15))  # 5 sec connect, 15 sec read
+        response = session.get(url, timeout=(5, 15))
         response.raise_for_status()
+        time.sleep(REQUEST_DELAY)
         return response.json()
     except Exception as e:
-        logging.error(f"Request failed for {url}: {e}")
+        logging.error(f"Request failed: {url} - {e}")
         return None
+
+
+def fetch_paginated(session, base_url, status_callback=None):
+    results = []
+    url = base_url
+    page = 1
+
+    while url:
+        if status_callback:
+            status_callback(f"Fetching page {page}...")
+
+        data = safe_request(session, url)
+        if not data:
+            break
+
+        results.extend(data.get("results", []))
+        url = data.get("next")
+        page += 1
+
+    return results
 
 
 def crawl(progress_callback=None, status_callback=None):
@@ -51,19 +58,16 @@ def crawl(progress_callback=None, status_callback=None):
     if status_callback:
         status_callback("Connecting to API...")
 
-    session = create_session()
+    session = requests.Session()
 
-    # ---------------- HORSES ----------------
+    # =============================
+    # FETCH HORSES
+    # =============================
 
-    horse_data = safe_get_json(session, CHARA_API)
+    horse_data = fetch_paginated(session, CHARA_API, status_callback)
 
-    if horse_data is None:
-        if status_callback:
-            status_callback("Horse API failed.")
-        return
-
-    horses = []
     total_horses = len(horse_data)
+    horses = []
 
     for i, h in enumerate(horse_data, start=1):
 
@@ -73,26 +77,23 @@ def crawl(progress_callback=None, status_callback=None):
             "preferred_stat": "Speed"
         })
 
-        if status_callback:
-            status_callback(f"Horses {i}/{total_horses}")
-
         if progress_callback:
             progress_callback(int((i / total_horses) * 40))
 
-    # ---------------- SUPPORTS ----------------
+        if status_callback:
+            status_callback(f"Horses {i}/{total_horses}")
+
+    # =============================
+    # FETCH SUPPORT CARDS
+    # =============================
 
     if status_callback:
         status_callback("Fetching support cards...")
 
-    support_data = safe_get_json(session, SUPPORT_API)
+    support_data = fetch_paginated(session, SUPPORT_API, status_callback)
 
-    if support_data is None:
-        if status_callback:
-            status_callback("Support API failed.")
-        return
-
-    cards = []
     total_support = len(support_data)
+    cards = []
 
     for i, s in enumerate(support_data, start=1):
 
@@ -101,13 +102,16 @@ def crawl(progress_callback=None, status_callback=None):
         img_url = f"https://gametora.com/images/umamusume/supports/tex_support_card_{support_id}.png"
         img_path = os.path.join(SUPPORT_IMG_DIR, f"{support_id}.png")
 
-        try:
-            r = session.get(img_url, timeout=(5, 10))
-            if r.status_code == 200:
-                with open(img_path, "wb") as f:
-                    f.write(r.content)
-        except Exception:
-            logging.warning(f"Image failed: {support_id}")
+        # Download image only if missing
+        if not os.path.exists(img_path):
+            try:
+                r = session.get(img_url, timeout=(5, 10))
+                if r.status_code == 200:
+                    with open(img_path, "wb") as f:
+                        f.write(r.content)
+                time.sleep(REQUEST_DELAY)
+            except Exception:
+                logging.warning(f"Image failed: {support_id}")
 
         cards.append({
             "id": support_id,
@@ -120,11 +124,11 @@ def crawl(progress_callback=None, status_callback=None):
             "blacklisted": False
         })
 
-        if status_callback:
-            status_callback(f"Supports {i}/{total_support}")
-
         if progress_callback:
             progress_callback(40 + int((i / total_support) * 60))
+
+        if status_callback:
+            status_callback(f"Supports {i}/{total_support}")
 
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump({"horses": horses, "cards": cards}, f, indent=2)
