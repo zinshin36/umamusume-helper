@@ -1,6 +1,6 @@
 import requests
-import time
 import logging
+import time
 
 BASE = "https://umapyoi.net/api/v1"
 
@@ -19,31 +19,34 @@ class UmaAPI:
             r = requests.get(url, timeout=20)
             r.raise_for_status()
             return r.json()
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             logger.error(f"Request failed: {url} | {e}")
-            raise RuntimeError(f"Request failed: {url}")
+            raise RuntimeError(str(e))
 
     # ================= HORSES =================
 
     def fetch_all_horses(self):
 
-        if self.progress_callback:
-            self.progress_callback("Fetching horses...", 5)
-
         data = self.fetch_json(f"{BASE}/character")
 
         if not isinstance(data, list):
-            raise RuntimeError("Unexpected /character structure")
+            raise RuntimeError("Unexpected /character response format")
 
         horses = []
-
         total = len(data)
 
-        for idx, h in enumerate(data):
+        for idx, entry in enumerate(data):
+
+            # SAFE extraction
+            char_id = entry.get("id") or entry.get("chara_id")
+            name = entry.get("name_en") or entry.get("name")
+
+            if not char_id:
+                continue
 
             horses.append({
-                "id": h["id"],
-                "name": h.get("name_en") or h.get("name") or f"ID {h['id']}",
+                "id": char_id,
+                "name": name if name else f"ID {char_id}",
                 "preferred_stat": "Speed"
             })
 
@@ -60,27 +63,31 @@ class UmaAPI:
 
     def fetch_all_supports(self):
 
-        if self.progress_callback:
-            self.progress_callback("Fetching supports...", 50)
-
         data = self.fetch_json(f"{BASE}/support")
 
         if not isinstance(data, list):
-            raise RuntimeError("Unexpected /support structure")
+            raise RuntimeError("Unexpected /support response format")
 
         supports = []
         total = len(data)
 
-        for idx, s in enumerate(data):
+        for idx, entry in enumerate(data):
+
+            support_id = entry.get("id")
+
+            if not support_id:
+                continue
+
+            name = entry.get("title_en") or f"ID {support_id}"
 
             supports.append({
-                "id": s["id"],
-                "name": s.get("title_en") or f"ID {s['id']}",
-                "rarity": "SSR" if s["id"] < 20000 else "SR",  # simple fallback
-                "type": "Speed",  # placeholder until deeper endpoint used
+                "id": support_id,
+                "name": name,
+                "rarity": "SSR" if support_id < 20000 else "SR",
+                "type": "Speed",
                 "event_bonus": 0,
                 "skills": [],
-                "image": f"data/images/support/{s['id']}.png",
+                "image": f"data/images/support/{support_id}.png",
                 "blacklisted": False
             })
 
@@ -90,5 +97,8 @@ class UmaAPI:
                     f"Fetching supports {idx}/{total}",
                     percent
                 )
+
+            # Respect rate limit
+            time.sleep(0.12)
 
         return supports
