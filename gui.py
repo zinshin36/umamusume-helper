@@ -9,7 +9,6 @@ from api import UmaAPI
 from optimizer import DeckOptimizer
 from data_manager import DataManager
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -29,7 +28,7 @@ class UmaPlannerGUI:
         self.refresh_dropdowns()
         self.load_support_tab()
 
-    # ================= UI BUILD =================
+    # ================= UI =================
 
     def build_ui(self):
 
@@ -44,8 +43,6 @@ class UmaPlannerGUI:
 
         self.build_deck_tab()
         self.build_support_tab()
-
-    # ================= DECK TAB =================
 
     def build_deck_tab(self):
 
@@ -65,16 +62,18 @@ class UmaPlannerGUI:
         options.pack(pady=10)
 
         ttk.Label(options, text="Scenario").grid(row=0, column=0)
-        self.scenario_var = tk.StringVar(value="Aoharu")
+
+        self.scenario_var = tk.StringVar(value="URA")
         self.scenario_dropdown = ttk.Combobox(
             options,
             textvariable=self.scenario_var,
-            values=["Aoharu", "URA", "Grand Live"],
+            values=["URA", "Aoharu", "Grand Live"],
             state="readonly"
         )
         self.scenario_dropdown.grid(row=0, column=1)
 
         ttk.Label(options, text="Horse").grid(row=1, column=0)
+
         self.horse_var = tk.StringVar()
         self.horse_dropdown = ttk.Combobox(
             options,
@@ -83,50 +82,24 @@ class UmaPlannerGUI:
         )
         self.horse_dropdown.grid(row=1, column=1)
 
-        self.simulation_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(
-            options,
-            text="Simulation Mode (Competitive)",
-            variable=self.simulation_var
-        ).grid(row=2, columnspan=2, pady=5)
-
         ttk.Button(
             options,
             text="Recommend Best Deck",
             command=self.recommend_deck
-        ).grid(row=3, columnspan=2, pady=10)
+        ).grid(row=2, columnspan=2, pady=10)
 
         self.deck_display = ttk.Frame(self.deck_frame)
         self.deck_display.pack(pady=20)
 
-    # ================= SUPPORT TAB =================
-
     def build_support_tab(self):
 
-        canvas = tk.Canvas(self.support_tab)
-        scrollbar = ttk.Scrollbar(self.support_tab, orient="vertical", command=canvas.yview)
+        self.support_container = ttk.Frame(self.support_tab)
+        self.support_container.pack(fill="both", expand=True)
 
-        self.support_container = ttk.Frame(canvas)
-
-        self.support_container.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-
-        canvas.create_window((0, 0), window=self.support_container, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-
-    # ================= DATABASE UPDATE =================
+    # ================= UPDATE =================
 
     def start_update(self):
-
         self.update_btn.config(state="disabled")
-        self.progress["value"] = 0
-        self.status_label.config(text="Connecting to API...")
-
         thread = threading.Thread(target=self.update_database, daemon=True)
         thread.start()
 
@@ -146,30 +119,14 @@ class UmaPlannerGUI:
             self.root.after(0, self.update_complete)
 
         except Exception as e:
-
-            logger.error(f"API Error: {e}")
-
-            def fail():
-                self.status_label.config(text="API Error")
-                self.update_btn.config(state="normal")
-                messagebox.showerror("API Error", str(e))
-
-            self.root.after(0, fail)
+            logger.error(str(e))
+            self.root.after(0, lambda: messagebox.showerror("API Error", str(e)))
 
     def update_progress(self, message, percent):
-
-        def update():
-            self.status_label.config(text=message)
-            self.progress["value"] = percent
-
-        self.root.after(0, update)
+        self.root.after(0, lambda: self.progress.configure(value=percent))
 
     def update_complete(self):
-
-        self.progress["value"] = 100
-        self.status_label.config(text="Crawl complete")
         self.update_btn.config(state="normal")
-
         self.refresh_dropdowns()
         self.load_support_tab()
 
@@ -184,28 +141,17 @@ class UmaPlannerGUI:
         if horse_names:
             self.horse_dropdown.current(0)
 
-    # ================= RECOMMEND DECK =================
+    # ================= RECOMMEND =================
 
     def recommend_deck(self):
 
-        if not self.horses or not self.supports:
-            messagebox.showerror("Error", "Database not loaded")
+        if not self.horses:
             return
 
-        selected_name = self.horse_var.get()
+        selected = self.horse_var.get()
+        horse = next(h for h in self.horses if h["name"] == selected)
 
-        if not selected_name:
-            messagebox.showerror("Error", "Select a horse")
-            return
-
-        selected_horse = next(h for h in self.horses if h["name"] == selected_name)
-
-        optimizer = DeckOptimizer(
-            self.supports,
-            selected_horse,
-            self.scenario_var.get(),
-            simulation_mode=self.simulation_var.get()
-        )
+        optimizer = DeckOptimizer(self.supports, horse, self.scenario_var.get())
 
         deck = optimizer.build_best_deck()
 
@@ -218,62 +164,32 @@ class UmaPlannerGUI:
             label.image = img
             label.grid(row=0, column=i, padx=10)
 
-    # ================= SUPPORT TAB RENDER =================
-
     def load_support_tab(self):
 
         for widget in self.support_container.winfo_children():
             widget.destroy()
 
         for idx, support in enumerate(self.supports):
-
-            frame = ttk.Frame(self.support_container)
-            frame.grid(row=idx // 3, column=idx % 3, padx=10, pady=10)
-
             img = self.load_image(support["image"])
-            label = tk.Label(frame, image=img)
+            label = tk.Label(self.support_container, image=img)
             label.image = img
-            label.pack()
-
-            ttk.Label(
-                frame,
-                text=f"{support['name']} ({support['rarity']})"
-            ).pack()
-
-            btn_text = "Unblacklist" if support.get("blacklisted") else "Blacklist"
-
-            ttk.Button(
-                frame,
-                text=btn_text,
-                command=lambda s=support: self.toggle_blacklist(s)
-            ).pack(pady=5)
-
-    def toggle_blacklist(self, support):
-
-        support["blacklisted"] = not support.get("blacklisted", False)
-        self.data_manager.save(self.horses, self.supports)
-        self.load_support_tab()
-
-    # ================= IMAGE LOADER =================
+            label.grid(row=idx // 6, column=idx % 6)
 
     def load_image(self, path):
 
         if not os.path.exists(path):
-            img = Image.new("RGB", (150, 150), "gray")
-            return ImageTk.PhotoImage(img)
+            return ImageTk.PhotoImage(Image.new("RGB", (120, 120), "gray"))
 
         if path in self.images_cache:
             return self.images_cache[path]
 
         img = Image.open(path)
-        img = img.resize((150, 150))
+        img = img.resize((120, 120))
         tk_img = ImageTk.PhotoImage(img)
 
         self.images_cache[path] = tk_img
         return tk_img
 
-
-# ================= ENTRY POINT =================
 
 def start_app():
     root = tk.Tk()
