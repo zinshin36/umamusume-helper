@@ -1,122 +1,122 @@
 import requests
-import json
 import os
+import json
 import logging
-from pathlib import Path
 
-BASE = "https://umapyoi.net/api/v1"
+DATA_FILE = "data/data.json"
+HORSE_IMG_DIR = "data/images/horses"
+SUPPORT_IMG_DIR = "data/images/support"
 
-DATA_DIR = Path("data")
-IMG_DIR = DATA_DIR / "images"
-HORSE_DIR = IMG_DIR / "horses"
-SUPPORT_DIR = IMG_DIR / "support"
-DATA_FILE = DATA_DIR / "data.json"
+UMAPYOI_CHARACTER_API = "https://umapyoi.net/api/v1/character"
+UMAPYOI_SUPPORT_API = "https://umapyoi.net/api/v1/support"
 
-for d in (DATA_DIR, IMG_DIR, HORSE_DIR, SUPPORT_DIR):
-    os.makedirs(d, exist_ok=True)
+os.makedirs(HORSE_IMG_DIR, exist_ok=True)
+os.makedirs(SUPPORT_IMG_DIR, exist_ok=True)
+os.makedirs("data", exist_ok=True)
 
-HEADERS = {"User-Agent": "Mozilla/5.0"}
-TIMEOUT = 20
+logging.basicConfig(
+    filename="app.log",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 
-def get_json(url):
+def download_image(url, path):
     try:
-        r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+        r = requests.get(url, timeout=10)
         if r.status_code == 200:
-            return r.json()
-        logging.error(f"HTTP {r.status_code} for {url}")
-    except Exception as e:
-        logging.error(f"JSON failure: {url} | {e}")
-    return None
-
-
-def download(url, path):
-    try:
-        r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
-        if r.status_code == 200 and r.content:
             with open(path, "wb") as f:
                 f.write(r.content)
-        else:
-            logging.error(f"Image failed: {url}")
-    except Exception as e:
-        logging.error(f"Image error: {url} | {e}")
+            return True
+    except Exception:
+        return False
+    return False
 
 
-def crawl(progress=None, status=None):
+def crawl(progress_callback=None, status_callback=None):
 
     logging.info("Starting API crawl")
-    if status:
-        status("Starting crawl...")
+
+    if status_callback:
+        status_callback("Fetching characters...")
 
     horses = []
-    cards = []
+    supports = []
 
-    char_list = get_json(f"{BASE}/character/list")
-    if not char_list:
-        logging.error("Character list failed.")
-        return
+    char_response = requests.get(UMAPYOI_CHARACTER_API)
+    characters = char_response.json()
 
-    total_chars = len(char_list)
-    total_support = 0
+    total_steps = len(characters) + 1
+    step = 0
 
-    for i, c in enumerate(char_list):
-        cid = c["id"]
-        name = c.get("name_en") or c.get("name")
+    for char in characters:
+        step += 1
 
-        img_api = get_json(f"{BASE}/character/images/{cid}")
-        img_url = None
+        if progress_callback:
+            progress_callback(int(step / total_steps * 100))
 
-        if isinstance(img_api, list) and img_api:
-            img_url = img_api[0].get("url")
+        name = char.get("name_en") or char.get("name")
+        char_id = char.get("id")
 
-        img_path = HORSE_DIR / f"{cid}.png"
-        if img_url:
-            download(img_url, img_path)
+        if status_callback:
+            status_callback(f"Character: {name}")
 
         horses.append({
-            "id": cid,
+            "id": char_id,
             "name": name,
-            "image": str(img_path)
+            "preferred_stat": char.get("initial_stat_type", "Speed"),
+            "image": f"{HORSE_IMG_DIR}/{char_id}.png"
         })
 
-        percent = int(((i + 1) / total_chars) * 50)
-        if progress:
-            progress(percent)
-        if status:
-            status(f"Crawling horses {i+1}/{total_chars}")
+    # ----------------------------
+    # SUPPORT CARDS
+    # ----------------------------
 
-    support_list = get_json(f"{BASE}/support")
-    total_support = len(support_list)
+    if status_callback:
+        status_callback("Fetching support cards...")
 
-    for i, s in enumerate(support_list):
-        sid = s["id"]
+    support_response = requests.get(UMAPYOI_SUPPORT_API)
+    support_cards = support_response.json()
 
-        detail = get_json(f"{BASE}/support/{sid}")
-        name = detail.get("name_en") if detail else None
-        support_type = detail.get("type") if detail else None
+    total_steps += len(support_cards)
 
-        img_url = f"https://gametora.com/images/umamusume/supports/tex_support_card_{sid}.png"
-        img_path = SUPPORT_DIR / f"{sid}.png"
-        download(img_url, img_path)
+    for card in support_cards:
+        step += 1
 
-        cards.append({
-            "id": sid,
+        if progress_callback:
+            progress_callback(int(step / total_steps * 100))
+
+        support_id = card.get("id")
+        name = card.get("name_en") or card.get("name")
+        rarity = card.get("rarity", "SR")
+        card_type = card.get("type", "Speed")
+
+        image_url = f"https://gametora.com/images/umamusume/supports/tex_support_card_{support_id}.png"
+        img_path = f"{SUPPORT_IMG_DIR}/{support_id}.png"
+
+        if status_callback:
+            status_callback(f"Support: {name}")
+
+        if not os.path.exists(img_path):
+            download_image(image_url, img_path)
+
+        supports.append({
+            "id": support_id,
             "name": name,
-            "type": support_type,
-            "image": str(img_path),
-            "stars": 0,
-            "blacklisted": False
+            "rarity": rarity,
+            "type": card_type,
+            "event_bonus": card.get("event_bonus", 0),
+            "skills": card.get("skills", []),
+            "image": img_path
         })
-
-        percent = 50 + int(((i + 1) / total_support) * 50)
-        if progress:
-            progress(percent)
-        if status:
-            status(f"Crawling supports {i+1}/{total_support}")
 
     with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump({"horses": horses, "cards": cards}, f, indent=2)
+        json.dump({"horses": horses, "cards": supports}, f, indent=2)
 
-    logging.info(f"Crawl complete. Horses: {len(horses)} Cards: {len(cards)}")
-    if status:
-        status("Crawl complete")
+    if progress_callback:
+        progress_callback(100)
+
+    if status_callback:
+        status_callback("Crawl Complete")
+
+    logging.info(f"Crawl complete. Horses: {len(horses)} Cards: {len(supports)}")
