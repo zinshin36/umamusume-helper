@@ -1,98 +1,73 @@
+import itertools
 import math
 
-# --------------------------------------------
-# SCENARIO META
-# --------------------------------------------
+STAT_CAP = 1200
 
-SCENARIO_META = {
-    "URA": {"Speed": 3, "Stamina": 2, "Power": 1},
-    "Aoharu": {"Speed": 2, "Power": 2, "Wisdom": 2},
-    "Grand Live": {"Speed": 3, "Wisdom": 2},
-    "Make a New Track": {"Speed": 2, "Power": 2, "Stamina": 1},
-    "Project L'Arc": {"Speed": 3, "Wisdom": 3}
+SCENARIO_MULTIPLIER = {
+    "URA": 1.0,
+    "Aoharu": 1.1,
+    "Grand Live": 1.2,
+    "Make a New Track": 1.15,
+    "Project L'Arc": 1.25
 }
 
-# --------------------------------------------
-# TRAINING SIMULATION
-# --------------------------------------------
 
-def simulate_training(card, focus_weights):
+def simulate_deck(deck, scenario):
 
-    base = focus_weights.get(card["type"], 1)
+    multiplier = SCENARIO_MULTIPLIER.get(scenario, 1.0)
 
-    rarity_bonus = 1.5 if card["rarity"] == "SSR" else 1.2
-    event_bonus = 1 + (card.get("event_bonus", 0) / 100)
+    stats = {
+        "Speed": 0,
+        "Stamina": 0,
+        "Power": 0,
+        "Wisdom": 0,
+        "Guts": 0
+    }
 
-    return base * rarity_bonus * event_bonus
+    for card in deck:
 
+        base_gain = 80 if card["rarity"] == "SSR" else 50
 
-# --------------------------------------------
-# SKILL STACKING CHECK
-# --------------------------------------------
+        gain = base_gain * multiplier
 
-def unique_skill_score(card, chosen_skills):
+        gain *= 1 + (card.get("event_bonus", 0) / 100)
 
-    score = 0
-    for skill in card.get("skills", []):
-        if skill not in chosen_skills:
-            score += 10
-    return score
+        stats[card["type"]] += gain
 
+    # Cap clamp
+    for k in stats:
+        stats[k] = min(stats[k], STAT_CAP)
 
-# --------------------------------------------
-# MAIN OPTIMIZER
-# --------------------------------------------
+    total_score = sum(stats.values())
+
+    return total_score
+
 
 def recommend_deck(horse, scenario, cards):
 
-    focus = SCENARIO_META.get(scenario, {"Speed": 3})
+    available = [c for c in cards if not c.get("blacklisted")]
 
-    scored = []
-    chosen_skills = set()
+    best_score = 0
+    best_deck = []
 
-    for card in cards:
+    # Test top 30 strongest cards only (pre-sort by rarity)
+    sorted_cards = sorted(
+        available,
+        key=lambda c: 2 if c["rarity"] == "SSR" else 1,
+        reverse=True
+    )[:30]
 
-        score = 0
+    for combo in itertools.combinations(sorted_cards, 6):
 
-        # Tier weighting
-        if card["rarity"] == "SSR":
-            score += 100
-        elif card["rarity"] == "SR":
-            score += 40
-
-        # Training efficiency
-        training_score = simulate_training(card, focus)
-        score += training_score * 50
-
-        # Event bonus
-        score += card.get("event_bonus", 0) * 2
-
-        # Horse synergy
-        if card["type"] == horse.get("preferred_stat"):
-            score += 60
-
-        # Unique skill stacking
-        skill_score = unique_skill_score(card, chosen_skills)
-        score += skill_score
-
-        scored.append((score, card))
-
-    scored.sort(key=lambda x: x[0], reverse=True)
-
-    final_deck = []
-
-    for score, card in scored:
-
-        if len(final_deck) >= 6:
-            break
-
-        # Avoid overstacking same type
-        type_count = sum(1 for c in final_deck if c["type"] == card["type"])
-        if type_count >= 3:
+        # Avoid stacking more than 3 same type
+        types = [c["type"] for c in combo]
+        if any(types.count(t) > 3 for t in types):
             continue
 
-        final_deck.append(card)
-        for skill in card.get("skills", []):
-            chosen_skills.add(skill)
+        score = simulate_deck(combo, scenario)
 
-    return final_deck
+        if score > best_score:
+            best_score = score
+            best_deck = combo
+
+    return list(best_deck)
