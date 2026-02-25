@@ -4,7 +4,6 @@ from PIL import Image, ImageTk
 import threading
 import json
 import os
-import logging
 
 from crawler import crawl
 from planner import recommend_deck
@@ -26,7 +25,7 @@ class App:
     def __init__(self, root):
         self.root = root
         root.title("Uma Planner PRO")
-        root.geometry("1200x850")
+        root.geometry("1200x900")
 
         self.cards = []
         self.horses = []
@@ -35,12 +34,10 @@ class App:
         notebook = ttk.Notebook(root)
         notebook.pack(fill="both", expand=True)
 
-        # ---------- TAB 1: Planner ----------
         self.plan_tab = ttk.Frame(notebook)
-        notebook.add(self.plan_tab, text="Deck Planner")
-
-        # ---------- TAB 2: All Cards ----------
         self.cards_tab = ttk.Frame(notebook)
+
+        notebook.add(self.plan_tab, text="Deck Planner")
         notebook.add(self.cards_tab, text="All Support Cards")
 
         self.build_planner_tab()
@@ -48,81 +45,83 @@ class App:
 
         self.load_data()
 
-    # ======================================================
-    # TAB 1 - PLANNER
-    # ======================================================
+    # ------------------------
+    # Planner Tab
+    # ------------------------
 
     def build_planner_tab(self):
 
         top = ttk.Frame(self.plan_tab)
-        top.pack(fill="x", pady=5)
+        top.pack(fill="x")
 
         self.update_btn = ttk.Button(top, text="Update Database", command=self.update_db)
-        self.update_btn.pack(side="left", padx=5)
+        self.update_btn.pack(side="left")
 
         self.progress_var = tk.IntVar()
         self.progress = ttk.Progressbar(top, maximum=100, variable=self.progress_var)
-        self.progress.pack(fill="x", expand=True, padx=5)
+        self.progress.pack(fill="x", expand=True, padx=10)
 
         self.status_label = ttk.Label(self.plan_tab, text="Ready")
         self.status_label.pack()
 
-        # Scenario
         ttk.Label(self.plan_tab, text="Scenario").pack()
         self.scenario_var = tk.StringVar()
         self.scenario_box = ttk.Combobox(self.plan_tab, textvariable=self.scenario_var, state="readonly")
         self.scenario_box["values"] = SCENARIOS
         self.scenario_box.current(0)
-        self.scenario_box.pack(pady=5)
+        self.scenario_box.pack()
 
-        # Horse
         ttk.Label(self.plan_tab, text="Horse").pack()
         self.horse_var = tk.StringVar()
         self.horse_box = ttk.Combobox(self.plan_tab, textvariable=self.horse_var, state="readonly")
-        self.horse_box.pack(pady=5)
+        self.horse_box.pack()
 
         self.recommend_btn = ttk.Button(self.plan_tab, text="Recommend Best Deck", command=self.recommend)
         self.recommend_btn.pack(pady=10)
 
-        self.result_box = tk.Text(self.plan_tab, height=12)
-        self.result_box.pack(fill="x", padx=20)
+        self.deck_frame = ttk.Frame(self.plan_tab)
+        self.deck_frame.pack(pady=10)
 
-    # ======================================================
-    # TAB 2 - ALL SUPPORT CARDS
-    # ======================================================
+    # ------------------------
+    # Cards Tab
+    # ------------------------
 
     def build_cards_tab(self):
 
-        self.tree = ttk.Treeview(self.cards_tab, columns=("Type", "Rarity", "Blacklisted"), show="headings")
-        self.tree.heading("Type", text="Type")
-        self.tree.heading("Rarity", text="Rarity")
-        self.tree.heading("Blacklisted", text="Blacklisted")
-        self.tree.pack(fill="both", expand=True)
+        self.cards_canvas = tk.Canvas(self.cards_tab)
+        self.cards_scroll = ttk.Scrollbar(self.cards_tab, orient="vertical", command=self.cards_canvas.yview)
+        self.cards_inner = ttk.Frame(self.cards_canvas)
 
-        self.tree.bind("<Double-1>", self.toggle_blacklist_from_list)
+        self.cards_inner.bind(
+            "<Configure>",
+            lambda e: self.cards_canvas.configure(scrollregion=self.cards_canvas.bbox("all"))
+        )
 
-    # ======================================================
-    # DATABASE
-    # ======================================================
+        self.cards_canvas.create_window((0, 0), window=self.cards_inner, anchor="nw")
+        self.cards_canvas.configure(yscrollcommand=self.cards_scroll.set)
+
+        self.cards_canvas.pack(side="left", fill="both", expand=True)
+        self.cards_scroll.pack(side="right", fill="y")
+
+    # ------------------------
+    # Update DB
+    # ------------------------
 
     def update_db(self):
         self.update_btn.config(state="disabled")
         threading.Thread(target=self.run_crawl, daemon=True).start()
 
     def run_crawl(self):
-        crawl(progress_callback=self.update_progress, status_callback=self.update_status)
-        self.load_data()
-        self.update_btn.config(state="normal")
+        crawl(
+            progress_callback=lambda v: self.root.after(0, self.progress_var.set, v),
+            status_callback=lambda s: self.root.after(0, self.status_label.config, {"text": s})
+        )
+        self.root.after(0, self.load_data)
+        self.root.after(0, lambda: self.update_btn.config(state="normal"))
 
-    def update_progress(self, value):
-        self.progress_var.set(value)
-
-    def update_status(self, text):
-        self.status_label.config(text=text)
-
-    # ======================================================
-    # LOAD DATA
-    # ======================================================
+    # ------------------------
+    # Load Data
+    # ------------------------
 
     def load_data(self):
 
@@ -139,62 +138,68 @@ class App:
         if self.horses:
             self.horse_box.current(0)
 
-        self.populate_card_list()
+        self.populate_cards_tab()
 
-    def populate_card_list(self):
+    def populate_cards_tab(self):
 
-        for row in self.tree.get_children():
-            self.tree.delete(row)
+        for widget in self.cards_inner.winfo_children():
+            widget.destroy()
 
         for card in self.cards:
-            self.tree.insert(
-                "",
-                "end",
-                iid=str(card["id"]),
-                values=(
-                    card.get("type", "Unknown"),
-                    card.get("rarity", "SR"),
-                    "Yes" if card.get("blacklisted") else "No"
-                )
+
+            frame = ttk.Frame(self.cards_inner)
+            frame.pack(fill="x", pady=5)
+
+            img_path = card.get("image")
+            if os.path.exists(img_path):
+                img = Image.open(img_path).resize((60, 80))
+                photo = ImageTk.PhotoImage(img)
+                self.images_cache[card["id"]] = photo
+                label_img = ttk.Label(frame, image=photo)
+                label_img.pack(side="left")
+
+            name_label = ttk.Label(frame, text=card["name"])
+            name_label.pack(side="left", padx=10)
+
+            btn = ttk.Button(
+                frame,
+                text="Blacklist" if not card.get("blacklisted") else "Unblacklist",
+                command=lambda c=card: self.toggle_blacklist(c)
             )
+            btn.pack(side="right")
 
-    def toggle_blacklist_from_list(self, event):
-
-        item = self.tree.selection()[0]
-        card_id = int(item)
-
-        for card in self.cards:
-            if card["id"] == card_id:
-                card["blacklisted"] = not card.get("blacklisted", False)
-
+    def toggle_blacklist(self, card):
+        card["blacklisted"] = not card.get("blacklisted", False)
         self.save_data()
-        self.populate_card_list()
+        self.populate_cards_tab()
 
     def save_data(self):
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             json.dump({"horses": self.horses, "cards": self.cards}, f, indent=2)
 
-    # ======================================================
-    # RECOMMEND
-    # ======================================================
+    # ------------------------
+    # Recommend
+    # ------------------------
 
     def recommend(self):
+
+        for widget in self.deck_frame.winfo_children():
+            widget.destroy()
 
         horse_name = self.horse_var.get()
         scenario = self.scenario_var.get()
 
         horse = next(h for h in self.horses if h["name"] == horse_name)
 
-        deck = recommend_deck(
-            horse,
-            scenario,
-            [c for c in self.cards if not c.get("blacklisted")]
-        )
-
-        self.result_box.delete("1.0", tk.END)
+        deck = recommend_deck(horse, scenario, self.cards)
 
         for card in deck:
-            self.result_box.insert(tk.END, f"{card['name']} ({card['type']})\n")
+            if os.path.exists(card["image"]):
+                img = Image.open(card["image"]).resize((100, 140))
+                photo = ImageTk.PhotoImage(img)
+                self.images_cache[f"deck_{card['id']}"] = photo
+                label = ttk.Label(self.deck_frame, image=photo)
+                label.pack(side="left", padx=5)
 
 
 def start_app():
