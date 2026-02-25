@@ -33,11 +33,9 @@ class UmaPlannerGUI:
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(fill="both", expand=True)
 
-        # Deck Planner Tab
         self.deck_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.deck_frame, text="Deck Planner")
 
-        # All Supports Tab
         self.support_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.support_tab, text="All Support Cards")
 
@@ -54,7 +52,7 @@ class UmaPlannerGUI:
         self.update_btn = ttk.Button(top_frame, text="Update Database", command=self.start_update)
         self.update_btn.pack(side="left", padx=5)
 
-        self.progress = ttk.Progressbar(top_frame, length=400)
+        self.progress = ttk.Progressbar(top_frame, length=400, maximum=100)
         self.progress.pack(side="left", padx=10)
 
         self.status_label = ttk.Label(top_frame, text="Ready")
@@ -65,21 +63,35 @@ class UmaPlannerGUI:
 
         ttk.Label(options_frame, text="Scenario").grid(row=0, column=0)
         self.scenario_var = tk.StringVar(value="Aoharu")
-        self.scenario_dropdown = ttk.Combobox(options_frame, textvariable=self.scenario_var,
-                                              values=["Aoharu", "URA", "Grand Live"], state="readonly")
+        self.scenario_dropdown = ttk.Combobox(
+            options_frame,
+            textvariable=self.scenario_var,
+            values=["Aoharu", "URA", "Grand Live"],
+            state="readonly"
+        )
         self.scenario_dropdown.grid(row=0, column=1)
 
         ttk.Label(options_frame, text="Horse").grid(row=1, column=0)
         self.horse_var = tk.StringVar()
-        self.horse_dropdown = ttk.Combobox(options_frame, textvariable=self.horse_var, state="readonly")
+        self.horse_dropdown = ttk.Combobox(
+            options_frame,
+            textvariable=self.horse_var,
+            state="readonly"
+        )
         self.horse_dropdown.grid(row=1, column=1)
 
         self.simulation_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(options_frame, text="Simulation Mode (Competitive)",
-                        variable=self.simulation_var).grid(row=2, columnspan=2, pady=5)
+        ttk.Checkbutton(
+            options_frame,
+            text="Simulation Mode (Competitive)",
+            variable=self.simulation_var
+        ).grid(row=2, columnspan=2, pady=5)
 
-        ttk.Button(options_frame, text="Recommend Best Deck",
-                   command=self.recommend_deck).grid(row=3, columnspan=2, pady=10)
+        ttk.Button(
+            options_frame,
+            text="Recommend Best Deck",
+            command=self.recommend_deck
+        ).grid(row=3, columnspan=2, pady=10)
 
         self.deck_display = ttk.Frame(self.deck_frame)
         self.deck_display.pack(pady=20)
@@ -106,7 +118,6 @@ class UmaPlannerGUI:
     # ================= UPDATE =================
 
     def start_update(self):
-
         self.update_btn.config(state="disabled")
         self.progress["value"] = 0
         self.status_label.config(text="Connecting to API...")
@@ -129,7 +140,6 @@ class UmaPlannerGUI:
         self.root.after(0, self.update_complete)
 
     def update_progress(self, message, page):
-
         def update():
             self.status_label.config(text=message)
             self.progress["value"] = min(100, page)
@@ -181,7 +191,7 @@ class UmaPlannerGUI:
             label.image = img
             label.grid(row=0, column=i, padx=10)
 
-    # ================= SUPPORT TAB RENDER =================
+    # ================= SUPPORT TAB =================
 
     def load_support_tab(self):
 
@@ -206,12 +216,11 @@ class UmaPlannerGUI:
             btn.pack(pady=5)
 
     def toggle_blacklist(self, support):
-
         support["blacklisted"] = not support.get("blacklisted", False)
         self.data_manager.save(self.horses, self.supports)
         self.load_support_tab()
 
-    # ================= IMAGE LOADER =================
+    # ================= IMAGE =================
 
     def load_image(self, path):
 
@@ -229,7 +238,8 @@ class UmaPlannerGUI:
         return tk_img
 
 
-if __name__ == "__main__":
+# ✅ THIS FIXES YOUR IMPORT ERROR
+def start_app():
     root = tk.Tk()
     app = UmaPlannerGUI(root)
     root.mainloop()
