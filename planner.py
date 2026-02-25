@@ -3,9 +3,9 @@ import math
 
 
 RARITY_WEIGHT = {
-    "SSR": 200,
-    "SR": 120,
-    "R": 30
+    "SSR": 400,
+    "SR": 250,
+    "R": 50
 }
 
 
@@ -22,7 +22,7 @@ def horse_preferred_stat(horse):
     return max(growths, key=growths.get)
 
 
-def score_card(card, horse, scenario):
+def score_card(card, horse):
 
     if card.get("blacklisted"):
         return -999999
@@ -31,13 +31,13 @@ def score_card(card, horse, scenario):
 
     preferred = horse_preferred_stat(horse)
 
-    stat_bonus = 50 if card.get("type") == preferred else 10
+    stat_bonus = 150 if card.get("type") == preferred else 40
 
-    training_bonus = card.get("training_bonus", 0) * 2
-    event_bonus = card.get("event_bonus", 0) * 1.5
-    bond_bonus = card.get("initial_bond", 0)
+    training_bonus = card.get("training_bonus", 0) * 4
+    event_bonus = card.get("event_bonus", 0) * 3
+    bond_bonus = card.get("initial_bond", 0) * 2
 
-    skill_value = len(card.get("skills", [])) * 20
+    skill_value = len(card.get("skills", [])) * 35
 
     return (
         rarity_score +
@@ -49,26 +49,26 @@ def score_card(card, horse, scenario):
     )
 
 
-def score_deck(deck, horse, scenario):
+def score_deck(deck, horse):
 
-    total = sum(score_card(c, horse, scenario) for c in deck)
+    total = sum(score_card(c, horse) for c in deck)
 
-    # penalize duplicate types >3
     type_count = {}
     for c in deck:
         t = c["type"]
         type_count[t] = type_count.get(t, 0) + 1
 
-    for t, count in type_count.items():
-        if count > 3:
-            total -= 50
+    # punish mono-type spam
+    for count in type_count.values():
+        if count > 4:
+            total -= 300
 
     # skill overlap penalty
     seen = set()
     for c in deck:
         for skill in c.get("skills", []):
             if skill in seen:
-                total -= 30
+                total -= 60
             seen.add(skill)
 
     return total
@@ -83,17 +83,15 @@ def recommend_deck(horse, scenario, cards):
 
     scored = sorted(
         available,
-        key=lambda c: score_card(c, horse, scenario),
+        key=lambda c: score_card(c, horse),
         reverse=True
-    )[:40]
+    )[:50]
 
     best_score = -math.inf
     best_deck = None
 
     for combo in itertools.combinations(scored, 6):
-
-        s = score_deck(combo, horse, scenario)
-
+        s = score_deck(combo, horse)
         if s > best_score:
             best_score = s
             best_deck = combo
