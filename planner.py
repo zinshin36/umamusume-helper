@@ -1,9 +1,10 @@
 import itertools
-import math
+import random
 
 STAT_CAP = 1200
+TURNS = 65
 
-SCENARIO_MULTIPLIER = {
+SCENARIO_MULT = {
     "URA": 1.0,
     "Aoharu": 1.1,
     "Grand Live": 1.2,
@@ -12,59 +13,42 @@ SCENARIO_MULTIPLIER = {
 }
 
 
-def simulate_deck(deck, scenario):
+def simulate_training(deck, scenario):
 
-    multiplier = SCENARIO_MULTIPLIER.get(scenario, 1.0)
+    mult = SCENARIO_MULT.get(scenario, 1.0)
 
-    stats = {
-        "Speed": 0,
-        "Stamina": 0,
-        "Power": 0,
-        "Wisdom": 0,
-        "Guts": 0
-    }
+    stats = {"Speed":0,"Stamina":0,"Power":0,"Wisdom":0,"Guts":0}
 
-    for card in deck:
+    for _ in range(TURNS):
 
-        base_gain = 80 if card["rarity"] == "SSR" else 50
+        card = random.choice(deck)
 
-        gain = base_gain * multiplier
-
-        gain *= 1 + (card.get("event_bonus", 0) / 100)
+        base = 12 if card["rarity"] == "SSR" else 8
+        gain = base * mult
+        gain *= 1 + (card.get("event_bonus",0)/100)
 
         stats[card["type"]] += gain
 
-    # Cap clamp
     for k in stats:
         stats[k] = min(stats[k], STAT_CAP)
 
-    total_score = sum(stats.values())
-
-    return total_score
+    return sum(stats.values())
 
 
 def recommend_deck(horse, scenario, cards):
 
-    available = [c for c in cards if not c.get("blacklisted")]
+    pool = [c for c in cards if not c.get("blacklisted")]
+
+    sorted_pool = sorted(pool, key=lambda c: 2 if c["rarity"]=="SSR" else 1, reverse=True)[:25]
 
     best_score = 0
     best_deck = []
 
-    # Test top 30 strongest cards only (pre-sort by rarity)
-    sorted_cards = sorted(
-        available,
-        key=lambda c: 2 if c["rarity"] == "SSR" else 1,
-        reverse=True
-    )[:30]
+    for combo in itertools.combinations(sorted_pool, 6):
 
-    for combo in itertools.combinations(sorted_cards, 6):
-
-        # Avoid stacking more than 3 same type
-        types = [c["type"] for c in combo]
-        if any(types.count(t) > 3 for t in types):
-            continue
-
-        score = simulate_deck(combo, scenario)
+        score = 0
+        for _ in range(10):  # Monte Carlo 10 sims
+            score += simulate_training(combo, scenario)
 
         if score > best_score:
             best_score = score
