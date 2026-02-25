@@ -93,13 +93,30 @@ class UmaPlannerGUI:
 
     def build_support_tab(self):
 
-        self.support_container = ttk.Frame(self.support_tab)
-        self.support_container.pack(fill="both", expand=True)
+        canvas = tk.Canvas(self.support_tab)
+        scrollbar = ttk.Scrollbar(self.support_tab, orient="vertical", command=canvas.yview)
+
+        self.support_container = ttk.Frame(canvas)
+
+        self.support_container.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=self.support_container, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
 
     # ================= UPDATE =================
 
     def start_update(self):
+
         self.update_btn.config(state="disabled")
+        self.progress["value"] = 0
+        self.status_label.config(text="Connecting to API...")
+
         thread = threading.Thread(target=self.update_database, daemon=True)
         thread.start()
 
@@ -123,10 +140,19 @@ class UmaPlannerGUI:
             self.root.after(0, lambda: messagebox.showerror("API Error", str(e)))
 
     def update_progress(self, message, percent):
-        self.root.after(0, lambda: self.progress.configure(value=percent))
+
+        def update():
+            self.status_label.config(text=message)
+            self.progress["value"] = percent
+
+        self.root.after(0, update)
 
     def update_complete(self):
+
+        self.progress["value"] = 100
+        self.status_label.config(text="Crawl complete")
         self.update_btn.config(state="normal")
+
         self.refresh_dropdowns()
         self.load_support_tab()
 
@@ -135,7 +161,6 @@ class UmaPlannerGUI:
     def refresh_dropdowns(self):
 
         horse_names = [h["name"] for h in self.horses]
-
         self.horse_dropdown["values"] = horse_names
 
         if horse_names:
@@ -164,12 +189,15 @@ class UmaPlannerGUI:
             label.image = img
             label.grid(row=0, column=i, padx=10)
 
+    # ================= SUPPORT TAB =================
+
     def load_support_tab(self):
 
         for widget in self.support_container.winfo_children():
             widget.destroy()
 
         for idx, support in enumerate(self.supports):
+
             img = self.load_image(support["image"])
             label = tk.Label(self.support_container, image=img)
             label.image = img
