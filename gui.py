@@ -1,347 +1,235 @@
 import tkinter as tk
 from tkinter import ttk
+from tkinter import messagebox
 from PIL import Image, ImageTk
 import threading
-import json
 import os
-import logging
 
-from crawler import crawl
-from planner import recommend_deck
-
-DATA_FILE = "data/data.json"
-
-SCENARIOS = [
-    "URA",
-    "Aoharu",
-    "Grand Live",
-    "Make a New Track",
-    "Project L'Arc"
-]
+from api import UmaAPI
+from optimizer import DeckOptimizer
+from data_manager import DataManager
 
 
-class UmaPlannerApp:
+class UmaPlannerGUI:
 
     def __init__(self, root):
-
         self.root = root
         self.root.title("Uma Planner PRO")
-        self.root.geometry("1300x900")
+        self.root.geometry("1200x800")
 
-        logging.basicConfig(
-            filename="app.log",
-            level=logging.INFO,
-            format="%(asctime)s - %(levelname)s - %(message)s"
-        )
+        self.data_manager = DataManager()
+        self.horses, self.supports = self.data_manager.load()
 
-        logging.info("Application started")
-
-        self.horses = []
-        self.cards = []
-        self.image_cache = {}
+        self.images_cache = {}
 
         self.build_ui()
-        self.load_data()
+        self.refresh_dropdowns()
+        self.load_support_tab()
 
-    # =====================================================
-    # UI BUILD
-    # =====================================================
+    # ================= UI =================
 
     def build_ui(self):
 
-        notebook = ttk.Notebook(self.root)
-        notebook.pack(fill="both", expand=True)
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(fill="both", expand=True)
 
-        self.planner_tab = ttk.Frame(notebook)
-        self.cards_tab = ttk.Frame(notebook)
+        # Deck Planner Tab
+        self.deck_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.deck_frame, text="Deck Planner")
 
-        notebook.add(self.planner_tab, text="Deck Planner")
-        notebook.add(self.cards_tab, text="All Support Cards")
+        # All Supports Tab
+        self.support_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.support_tab, text="All Support Cards")
 
-        self.build_planner_tab()
-        self.build_cards_tab()
+        self.build_deck_tab()
+        self.build_support_tab()
 
-    # =====================================================
-    # PLANNER TAB
-    # =====================================================
+    # ================= DECK TAB =================
 
-    def build_planner_tab(self):
+    def build_deck_tab(self):
 
-        top_frame = ttk.Frame(self.planner_tab)
+        top_frame = ttk.Frame(self.deck_frame)
         top_frame.pack(fill="x", pady=5)
 
-        self.update_btn = ttk.Button(
-            top_frame,
-            text="Update Database",
-            command=self.start_update
-        )
+        self.update_btn = ttk.Button(top_frame, text="Update Database", command=self.start_update)
         self.update_btn.pack(side="left", padx=5)
 
-        self.progress_var = tk.IntVar(value=0)
+        self.progress = ttk.Progressbar(top_frame, length=400)
+        self.progress.pack(side="left", padx=10)
 
-        self.progress_bar = ttk.Progressbar(
-            top_frame,
-            maximum=100,
-            variable=self.progress_var
-        )
-        self.progress_bar.pack(side="left", fill="x", expand=True, padx=10)
+        self.status_label = ttk.Label(top_frame, text="Ready")
+        self.status_label.pack(side="left")
 
-        self.percent_label = ttk.Label(top_frame, text="0%")
-        self.percent_label.pack(side="right", padx=5)
+        options_frame = ttk.Frame(self.deck_frame)
+        options_frame.pack(pady=10)
 
-        self.status_label = ttk.Label(self.planner_tab, text="Ready")
-        self.status_label.pack()
+        ttk.Label(options_frame, text="Scenario").grid(row=0, column=0)
+        self.scenario_var = tk.StringVar(value="Aoharu")
+        self.scenario_dropdown = ttk.Combobox(options_frame, textvariable=self.scenario_var,
+                                              values=["Aoharu", "URA", "Grand Live"], state="readonly")
+        self.scenario_dropdown.grid(row=0, column=1)
 
-        ttk.Label(self.planner_tab, text="Scenario").pack(pady=5)
-
-        self.scenario_var = tk.StringVar()
-        self.scenario_box = ttk.Combobox(
-            self.planner_tab,
-            textvariable=self.scenario_var,
-            state="readonly"
-        )
-        self.scenario_box["values"] = SCENARIOS
-        self.scenario_box.current(0)
-        self.scenario_box.pack()
-
-        ttk.Label(self.planner_tab, text="Horse").pack(pady=5)
-
+        ttk.Label(options_frame, text="Horse").grid(row=1, column=0)
         self.horse_var = tk.StringVar()
-        self.horse_box = ttk.Combobox(
-            self.planner_tab,
-            textvariable=self.horse_var,
-            state="readonly"
-        )
-        self.horse_box.pack()
+        self.horse_dropdown = ttk.Combobox(options_frame, textvariable=self.horse_var, state="readonly")
+        self.horse_dropdown.grid(row=1, column=1)
 
-        self.recommend_btn = ttk.Button(
-            self.planner_tab,
-            text="Recommend Best Deck",
-            command=self.recommend_deck_ui
-        )
-        self.recommend_btn.pack(pady=10)
+        self.simulation_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(options_frame, text="Simulation Mode (Competitive)",
+                        variable=self.simulation_var).grid(row=2, columnspan=2, pady=5)
 
-        self.deck_frame = ttk.Frame(self.planner_tab)
-        self.deck_frame.pack(pady=10)
+        ttk.Button(options_frame, text="Recommend Best Deck",
+                   command=self.recommend_deck).grid(row=3, columnspan=2, pady=10)
 
-    # =====================================================
-    # CARDS TAB
-    # =====================================================
+        self.deck_display = ttk.Frame(self.deck_frame)
+        self.deck_display.pack(pady=20)
 
-    def build_cards_tab(self):
+    # ================= SUPPORT TAB =================
 
-        self.canvas = tk.Canvas(self.cards_tab)
-        self.scrollbar = ttk.Scrollbar(
-            self.cards_tab,
-            orient="vertical",
-            command=self.canvas.yview
-        )
+    def build_support_tab(self):
 
-        self.cards_inner = ttk.Frame(self.canvas)
+        canvas = tk.Canvas(self.support_tab)
+        scrollbar = ttk.Scrollbar(self.support_tab, orient="vertical", command=canvas.yview)
+        self.support_container = ttk.Frame(canvas)
 
-        self.cards_inner.bind(
+        self.support_container.bind(
             "<Configure>",
-            lambda e: self.canvas.configure(
-                scrollregion=self.canvas.bbox("all")
-            )
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
 
-        self.canvas.create_window(
-            (0, 0),
-            window=self.cards_inner,
-            anchor="nw"
-        )
+        canvas.create_window((0, 0), window=self.support_container, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
 
-        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
 
-        self.canvas.pack(side="left", fill="both", expand=True)
-        self.scrollbar.pack(side="right", fill="y")
-
-    # =====================================================
-    # UPDATE DATABASE
-    # =====================================================
+    # ================= UPDATE =================
 
     def start_update(self):
 
         self.update_btn.config(state="disabled")
-        self.progress_var.set(0)
-        self.percent_label.config(text="0%")
-        self.status_label.config(text="Starting...")
+        self.progress["value"] = 0
+        self.status_label.config(text="Connecting to API...")
 
-        thread = threading.Thread(
-            target=self.run_crawl_thread,
-            daemon=True
-        )
+        thread = threading.Thread(target=self.update_database)
         thread.start()
 
-    def run_crawl_thread(self):
+    def update_database(self):
 
-        def progress_update(value):
-            self.root.after(
-                0,
-                lambda: self.update_progress(value)
-            )
+        api = UmaAPI(progress_callback=self.update_progress)
 
-        def status_update(text):
-            self.root.after(
-                0,
-                lambda: self.status_label.config(text=text)
-            )
+        horses = api.fetch_all_horses()
+        supports = api.fetch_all_supports()
 
-        crawl(
-            progress_callback=progress_update,
-            status_callback=status_update
-        )
+        self.data_manager.save(horses, supports)
 
-        self.root.after(0, self.load_data)
-        self.root.after(
-            0,
-            lambda: self.update_btn.config(state="normal")
-        )
+        self.horses = horses
+        self.supports = supports
 
-    def update_progress(self, value):
-        self.progress_var.set(value)
-        self.percent_label.config(text=f"{value}%")
+        self.root.after(0, self.update_complete)
 
-    # =====================================================
-    # LOAD DATA
-    # =====================================================
+    def update_progress(self, message, page):
 
-    def load_data(self):
+        def update():
+            self.status_label.config(text=message)
+            self.progress["value"] = min(100, page)
+        self.root.after(0, update)
 
-        if not os.path.exists(DATA_FILE):
+    def update_complete(self):
+        self.progress["value"] = 100
+        self.status_label.config(text="Crawl complete")
+        self.update_btn.config(state="normal")
+        self.refresh_dropdowns()
+        self.load_support_tab()
+
+    # ================= DROPDOWNS =================
+
+    def refresh_dropdowns(self):
+
+        horse_names = [h["name"] for h in self.horses]
+        self.horse_dropdown["values"] = horse_names
+
+        if horse_names:
+            self.horse_dropdown.current(0)
+
+    # ================= RECOMMEND =================
+
+    def recommend_deck(self):
+
+        if not self.horses or not self.supports:
+            messagebox.showerror("Error", "Database not loaded")
             return
 
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        selected_horse_name = self.horse_var.get()
+        selected_horse = next(h for h in self.horses if h["name"] == selected_horse_name)
 
-        self.horses = data.get("horses", [])
-        self.cards = data.get("cards", [])
+        optimizer = DeckOptimizer(
+            self.supports,
+            selected_horse,
+            self.scenario_var.get(),
+            simulation_mode=self.simulation_var.get()
+        )
 
-        self.horse_box["values"] = [h["name"] for h in self.horses]
+        deck = optimizer.build_best_deck()
 
-        if self.horses:
-            self.horse_box.current(0)
-
-        self.populate_cards_tab()
-
-    # =====================================================
-    # SUPPORT CARD LIST
-    # =====================================================
-
-    def populate_cards_tab(self):
-
-        for widget in self.cards_inner.winfo_children():
+        for widget in self.deck_display.winfo_children():
             widget.destroy()
 
-        for card in self.cards:
+        for i, support in enumerate(deck):
+            img = self.load_image(support["image"])
+            label = tk.Label(self.deck_display, image=img)
+            label.image = img
+            label.grid(row=0, column=i, padx=10)
 
-            frame = ttk.Frame(self.cards_inner)
-            frame.pack(fill="x", pady=3)
+    # ================= SUPPORT TAB RENDER =================
 
-            img_path = card.get("image")
+    def load_support_tab(self):
 
-            if img_path and os.path.exists(img_path):
-
-                try:
-                    img = Image.open(img_path).resize((60, 80))
-                    photo = ImageTk.PhotoImage(img)
-                    self.image_cache[card["id"]] = photo
-
-                    img_label = ttk.Label(frame, image=photo)
-                    img_label.pack(side="left", padx=5)
-
-                except Exception:
-                    pass
-
-            name_label = ttk.Label(frame, text=card["name"])
-            name_label.pack(side="left", padx=10)
-
-            btn_text = (
-                "Unblacklist"
-                if card.get("blacklisted")
-                else "Blacklist"
-            )
-
-            btn = ttk.Button(
-                frame,
-                text=btn_text,
-                command=lambda c=card: self.toggle_blacklist(c)
-            )
-            btn.pack(side="right")
-
-    def toggle_blacklist(self, card):
-
-        card["blacklisted"] = not card.get("blacklisted", False)
-
-        with open(DATA_FILE, "w", encoding="utf-8") as f:
-            json.dump(
-                {"horses": self.horses, "cards": self.cards},
-                f,
-                indent=2
-            )
-
-        self.populate_cards_tab()
-
-    # =====================================================
-    # RECOMMEND DECK
-    # =====================================================
-
-    def recommend_deck_ui(self):
-
-        for widget in self.deck_frame.winfo_children():
+        for widget in self.support_container.winfo_children():
             widget.destroy()
 
-        if not self.horses:
-            return
+        for idx, support in enumerate(self.supports):
 
-        horse_name = self.horse_var.get()
-        scenario = self.scenario_var.get()
+            frame = ttk.Frame(self.support_container)
+            frame.grid(row=idx // 3, column=idx % 3, padx=10, pady=10)
 
-        horse = next(
-            (h for h in self.horses if h["name"] == horse_name),
-            None
-        )
+            img = self.load_image(support["image"])
+            label = tk.Label(frame, image=img)
+            label.image = img
+            label.pack()
 
-        if not horse:
-            return
+            ttk.Label(frame, text=f"{support['name']} ({support['rarity']})").pack()
 
-        deck = recommend_deck(
-            horse,
-            scenario,
-            self.cards
-        )
+            btn_text = "Unblacklist" if support.get("blacklisted") else "Blacklist"
+            btn = ttk.Button(frame, text=btn_text,
+                             command=lambda s=support: self.toggle_blacklist(s))
+            btn.pack(pady=5)
 
-        for card in deck:
+    def toggle_blacklist(self, support):
 
-            img_path = card.get("image")
+        support["blacklisted"] = not support.get("blacklisted", False)
+        self.data_manager.save(self.horses, self.supports)
+        self.load_support_tab()
 
-            if img_path and os.path.exists(img_path):
+    # ================= IMAGE LOADER =================
 
-                try:
-                    img = Image.open(img_path).resize((120, 160))
-                    photo = ImageTk.PhotoImage(img)
-                    self.image_cache[f"deck_{card['id']}"] = photo
+    def load_image(self, path):
 
-                    label = ttk.Label(
-                        self.deck_frame,
-                        image=photo
-                    )
-                    label.pack(side="left", padx=5)
+        if not os.path.exists(path):
+            return ImageTk.PhotoImage(Image.new("RGB", (150, 150), "gray"))
 
-                except Exception:
-                    pass
+        if path in self.images_cache:
+            return self.images_cache[path]
 
+        img = Image.open(path)
+        img = img.resize((150, 150))
+        tk_img = ImageTk.PhotoImage(img)
 
-# =====================================================
-# START
-# =====================================================
-
-def start_app():
-    root = tk.Tk()
-    app = UmaPlannerApp(root)
-    root.mainloop()
+        self.images_cache[path] = tk_img
+        return tk_img
 
 
 if __name__ == "__main__":
-    start_app()
+    root = tk.Tk()
+    app = UmaPlannerGUI(root)
+    root.mainloop()
