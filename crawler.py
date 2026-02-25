@@ -13,7 +13,7 @@ CHARA_DETAIL_API = "https://umapyoi.net/api/v1/character/{}"
 SUPPORT_LIST_API = "https://umapyoi.net/api/v1/support"
 SUPPORT_DETAIL_API = "https://umapyoi.net/api/v1/support/{}"
 
-REQUEST_DELAY = 0.20  # 5 requests/sec (safe)
+REQUEST_DELAY = 0.20  # 5 requests/sec safe
 
 os.makedirs("data", exist_ok=True)
 os.makedirs(SUPPORT_IMG_DIR, exist_ok=True)
@@ -21,7 +21,7 @@ os.makedirs(SUPPORT_IMG_DIR, exist_ok=True)
 
 def safe_get(session, url):
     try:
-        r = session.get(url, timeout=(5, 15))
+        r = session.get(url, timeout=(5, 20))
         r.raise_for_status()
         time.sleep(REQUEST_DELAY)
         return r.json()
@@ -35,11 +35,11 @@ def crawl(progress_callback=None, status_callback=None):
     logging.info("Starting API crawl")
 
     session = requests.Session()
-    session.headers.update({"User-Agent": "UmaPlannerPRO/2.0"})
+    session.headers.update({"User-Agent": "UmaPlannerPRO/3.0"})
 
-    # ==========================
+    # ==============================
     # HORSES
-    # ==========================
+    # ==============================
 
     if status_callback:
         status_callback("Fetching horse list...")
@@ -59,12 +59,12 @@ def crawl(progress_callback=None, status_callback=None):
 
         horses.append({
             "id": detail["id"],
-            "name": detail.get("name_en", detail.get("name", "Unknown")),
-            "speed_growth": detail.get("speed_growth", 0),
-            "stamina_growth": detail.get("stamina_growth", 0),
-            "power_growth": detail.get("power_growth", 0),
-            "guts_growth": detail.get("guts_growth", 0),
-            "wisdom_growth": detail.get("wisdom_growth", 0)
+            "name": detail.get("name_en") or detail.get("name"),
+            "speed_growth": detail.get("speed_growth_rate", 0),
+            "stamina_growth": detail.get("stamina_growth_rate", 0),
+            "power_growth": detail.get("power_growth_rate", 0),
+            "guts_growth": detail.get("guts_growth_rate", 0),
+            "wisdom_growth": detail.get("wiz_growth_rate", 0)
         })
 
         if progress_callback:
@@ -73,27 +73,42 @@ def crawl(progress_callback=None, status_callback=None):
         if status_callback:
             status_callback(f"Horses {i}/{total_horses}")
 
-    # ==========================
+    # ==============================
     # SUPPORT CARDS
-    # ==========================
+    # ==============================
 
     if status_callback:
-        status_callback("Fetching support list...")
+        status_callback("Fetching support cards...")
 
-    support_ids = safe_get(session, SUPPORT_LIST_API)
-    if not support_ids:
+    support_list = safe_get(session, SUPPORT_LIST_API)
+    if not support_list:
         return
 
     cards = []
-    total_support = len(support_ids)
+    total_support = len(support_list)
 
-    for i, s in enumerate(support_ids, start=1):
+    for i, s in enumerate(support_list, start=1):
 
         detail = safe_get(session, SUPPORT_DETAIL_API.format(s["id"]))
         if not detail:
             continue
 
         support_id = detail["id"]
+
+        # Correct fields from API structure
+        card_name = detail.get("name_en") or detail.get("name")
+
+        rarity = detail.get("rarity")
+        support_type = detail.get("support_type")
+
+        training_bonus = detail.get("training_bonus", 0)
+        event_bonus = detail.get("event_bonus", 0)
+        initial_bond = detail.get("initial_bond", 0)
+
+        skills = []
+        for skill in detail.get("skills", []):
+            if isinstance(skill, dict):
+                skills.append(skill.get("name_en") or skill.get("name"))
 
         img_path = os.path.join(SUPPORT_IMG_DIR, f"{support_id}.png")
 
@@ -110,13 +125,13 @@ def crawl(progress_callback=None, status_callback=None):
 
         cards.append({
             "id": support_id,
-            "name": detail.get("name_en", detail.get("name", "Unknown")),
-            "rarity": detail.get("rarity", "R"),
-            "type": detail.get("type", "Speed"),
-            "event_bonus": detail.get("event_bonus", 0),
-            "training_bonus": detail.get("training_bonus", 0),
-            "initial_bond": detail.get("initial_bond", 0),
-            "skills": [skill.get("name_en", "") for skill in detail.get("skills", [])],
+            "name": card_name,
+            "rarity": rarity,
+            "type": support_type,
+            "training_bonus": training_bonus,
+            "event_bonus": event_bonus,
+            "initial_bond": initial_bond,
+            "skills": skills,
             "image": img_path,
             "blacklisted": False
         })
