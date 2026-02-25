@@ -7,116 +7,109 @@ DATA_FILE = "data/data.json"
 HORSE_IMG_DIR = "data/images/horses"
 SUPPORT_IMG_DIR = "data/images/support"
 
-UMAPYOI_CHARACTER_API = "https://umapyoi.net/api/v1/character"
-UMAPYOI_SUPPORT_API = "https://umapyoi.net/api/v1/support"
+CHARA_API = "https://umapyoi.net/api/v1/character"
+SUPPORT_API = "https://umapyoi.net/api/v1/support"
 
 os.makedirs(HORSE_IMG_DIR, exist_ok=True)
 os.makedirs(SUPPORT_IMG_DIR, exist_ok=True)
 os.makedirs("data", exist_ok=True)
-
-logging.basicConfig(
-    filename="app.log",
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
-
-
-def download_image(url, path):
-    try:
-        r = requests.get(url, timeout=10)
-        if r.status_code == 200:
-            with open(path, "wb") as f:
-                f.write(r.content)
-            return True
-    except Exception:
-        return False
-    return False
 
 
 def crawl(progress_callback=None, status_callback=None):
 
     logging.info("Starting API crawl")
 
-    if status_callback:
-        status_callback("Fetching characters...")
-
     horses = []
-    supports = []
+    cards = []
 
-    char_response = requests.get(UMAPYOI_CHARACTER_API)
-    characters = char_response.json()
+    # ---------------------------------------------------
+    # GET HORSES
+    # ---------------------------------------------------
 
-    total_steps = len(characters) + 1
+    if status_callback:
+        status_callback("Fetching horses...")
+
+    horse_res = requests.get(CHARA_API)
+    horse_data = horse_res.json()
+
+    total_steps = len(horse_data)
     step = 0
 
-    for char in characters:
+    for h in horse_data:
         step += 1
 
-        if progress_callback:
-            progress_callback(int(step / total_steps * 100))
-
-        name = char.get("name_en") or char.get("name")
-        char_id = char.get("id")
-
-        if status_callback:
-            status_callback(f"Character: {name}")
+        horse_id = h["id"]
+        name = h["name_en"]
 
         horses.append({
-            "id": char_id,
+            "id": horse_id,
             "name": name,
-            "preferred_stat": char.get("initial_stat_type", "Speed"),
-            "image": f"{HORSE_IMG_DIR}/{char_id}.png"
+            "preferred_stat": "Speed"  # fallback
         })
 
-    # ----------------------------
-    # SUPPORT CARDS
-    # ----------------------------
+        if progress_callback:
+            percent = int((step / total_steps) * 30)
+            progress_callback(percent)
+
+    # ---------------------------------------------------
+    # GET SUPPORT CARDS
+    # ---------------------------------------------------
 
     if status_callback:
         status_callback("Fetching support cards...")
 
-    support_response = requests.get(UMAPYOI_SUPPORT_API)
-    support_cards = support_response.json()
+    support_res = requests.get(SUPPORT_API)
+    support_data = support_res.json()
 
-    total_steps += len(support_cards)
+    total_support = len(support_data)
+    support_step = 0
 
-    for card in support_cards:
-        step += 1
+    for s in support_data:
 
-        if progress_callback:
-            progress_callback(int(step / total_steps * 100))
+        support_step += 1
 
-        support_id = card.get("id")
-        name = card.get("name_en") or card.get("name")
-        rarity = card.get("rarity", "SR")
-        card_type = card.get("type", "Speed")
+        support_id = s["id"]
+        name = s["name_en"]
+        rarity = s.get("rarity", "SR")
+        card_type = s.get("type", "Speed")
 
-        image_url = f"https://gametora.com/images/umamusume/supports/tex_support_card_{support_id}.png"
-        img_path = f"{SUPPORT_IMG_DIR}/{support_id}.png"
+        # Image download
+        img_url = f"https://gametora.com/images/umamusume/supports/tex_support_card_{support_id}.png"
+        img_path = os.path.join(SUPPORT_IMG_DIR, f"{support_id}.png")
 
-        if status_callback:
-            status_callback(f"Support: {name}")
+        try:
+            r = requests.get(img_url, timeout=5)
+            if r.status_code == 200:
+                with open(img_path, "wb") as f:
+                    f.write(r.content)
+        except:
+            pass
 
-        if not os.path.exists(img_path):
-            download_image(image_url, img_path)
-
-        supports.append({
+        cards.append({
             "id": support_id,
             "name": name,
             "rarity": rarity,
             "type": card_type,
-            "event_bonus": card.get("event_bonus", 0),
-            "skills": card.get("skills", []),
-            "image": img_path
+            "image": img_path,
+            "event_bonus": s.get("event_bonus", 0),
+            "skills": s.get("skills", []),
+            "blacklisted": False
         })
 
+        if progress_callback:
+            percent = 30 + int((support_step / total_support) * 70)
+            progress_callback(percent)
+
+        if status_callback:
+            status_callback(f"Downloading supports {support_step}/{total_support}")
+
     with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump({"horses": horses, "cards": supports}, f, indent=2)
+        json.dump({"horses": horses, "cards": cards}, f, indent=2)
 
     if progress_callback:
         progress_callback(100)
 
     if status_callback:
-        status_callback("Crawl Complete")
+        status_callback("Crawl complete")
 
-    logging.info(f"Crawl complete. Horses: {len(horses)} Cards: {len(supports)}")
+    logging.info("Crawl complete")
