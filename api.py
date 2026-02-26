@@ -4,17 +4,9 @@ import time
 import os
 
 BASE = "https://umapyoi.net/api/v1"
-CDN_BASE = "https://umapyoi.net"
 
-REQUEST_DELAY = 0.12
-
+REQUEST_DELAY = 0.15
 logger = logging.getLogger(__name__)
-
-RARITY_MAP = {
-    3: "SSR",
-    2: "SR",
-    1: "R"
-}
 
 
 class UmaAPI:
@@ -22,15 +14,15 @@ class UmaAPI:
     def __init__(self, progress_callback=None):
         self.progress_callback = progress_callback
 
-    # ================= SAFE REQUEST =================
+    # ---------------- REQUEST ----------------
 
     def fetch_json(self, url):
-        r = requests.get(url, timeout=20)
+        r = requests.get(url, timeout=30)
         r.raise_for_status()
         time.sleep(REQUEST_DELAY)
         return r.json()
 
-    # ================= IMAGE DOWNLOAD =================
+    # ---------------- IMAGE ----------------
 
     def download_image(self, url, save_path):
 
@@ -43,23 +35,23 @@ class UmaAPI:
             return
 
         try:
-            r = requests.get(url, timeout=20)
+            r = requests.get(url, timeout=30)
             r.raise_for_status()
             with open(save_path, "wb") as f:
                 f.write(r.content)
         except Exception as e:
             logger.error(f"Image download failed: {url} | {e}")
 
-    # ================= HORSES =================
+    # ---------------- HORSES ----------------
 
     def fetch_all_horses(self):
 
-        id_list = self.fetch_json(f"{BASE}/character")
+        horses_index = self.fetch_json(f"{BASE}/character")
 
         horses = []
-        total = len(id_list)
+        total = len(horses_index)
 
-        for idx, entry in enumerate(id_list):
+        for i, entry in enumerate(horses_index):
 
             game_id = entry.get("game_id")
             if not game_id:
@@ -69,20 +61,20 @@ class UmaAPI:
 
             name = detail.get("name_en") or detail.get("name")
 
-            # Growth stats are inside "status"
-            status = detail.get("status", {})
+            # REAL growth location (from API docs)
+            growth_rate = detail.get("proper", {}).get("growth_rate", {})
 
             growth = {
-                "Speed": status.get("speed_growth", 0),
-                "Stamina": status.get("stamina_growth", 0),
-                "Power": status.get("power_growth", 0),
-                "Guts": status.get("guts_growth", 0),
-                "Wisdom": status.get("wisdom_growth", 0)
+                "Speed": growth_rate.get("speed", 0),
+                "Stamina": growth_rate.get("stamina", 0),
+                "Power": growth_rate.get("power", 0),
+                "Guts": growth_rate.get("guts", 0),
+                "Wisdom": growth_rate.get("wiz", 0)
             }
 
-            # Optional horse image
+            image_url = detail.get("image")
+
             image_path = f"data/images/horse/{game_id}.png"
-            image_url = f"{CDN_BASE}/static/characters/{game_id}.png"
             self.download_image(image_url, image_path)
 
             horses.append({
@@ -92,25 +84,22 @@ class UmaAPI:
                 "image": image_path
             })
 
-            if self.progress_callback and idx % 3 == 0:
-                percent = 5 + int((idx / max(total, 1)) * 25)
-                self.progress_callback(
-                    f"Fetching horses {idx}/{total}",
-                    percent
-                )
+            if self.progress_callback and i % 3 == 0:
+                percent = 5 + int((i / max(total, 1)) * 30)
+                self.progress_callback(f"Fetching horses {i}/{total}", percent)
 
         return horses
 
-    # ================= SUPPORTS =================
+    # ---------------- SUPPORTS ----------------
 
     def fetch_all_supports(self):
 
-        support_list = self.fetch_json(f"{BASE}/support")
-        total = len(support_list)
+        supports_index = self.fetch_json(f"{BASE}/support")
 
         supports = []
+        total = len(supports_index)
 
-        for idx, entry in enumerate(support_list):
+        for i, entry in enumerate(supports_index):
 
             support_id = entry.get("id")
             if not support_id:
@@ -118,32 +107,48 @@ class UmaAPI:
 
             detail = self.fetch_json(f"{BASE}/support/{support_id}")
 
-            rarity = RARITY_MAP.get(detail.get("rarity", 1), "R")
+            name = detail.get("title_en") or detail.get("name_en")
+
+            rarity_raw = detail.get("rarity", 1)
+            rarity = {3: "SSR", 2: "SR", 1: "R"}.get(rarity_raw, "R")
+
             support_type = detail.get("type", "Speed")
 
-            # Stat bonuses inside training_bonus
-            training_bonus = detail.get("training_bonus", {})
+            # REAL stat bonuses from "effects"
+            effects = detail.get("effects", [])
 
             stat_bonus = {
-                "Speed": training_bonus.get("speed", 0),
-                "Stamina": training_bonus.get("stamina", 0),
-                "Power": training_bonus.get("power", 0),
-                "Guts": training_bonus.get("guts", 0),
-                "Wisdom": training_bonus.get("wisdom", 0)
+                "Speed": 0,
+                "Stamina": 0,
+                "Power": 0,
+                "Guts": 0,
+                "Wisdom": 0
             }
+
+            for effect in effects:
+                effect_type = effect.get("type")
+                value = effect.get("value", 0)
+
+                if effect_type == "speed_bonus":
+                    stat_bonus["Speed"] += value
+                elif effect_type == "stamina_bonus":
+                    stat_bonus["Stamina"] += value
+                elif effect_type == "power_bonus":
+                    stat_bonus["Power"] += value
+                elif effect_type == "guts_bonus":
+                    stat_bonus["Guts"] += value
+                elif effect_type == "wiz_bonus":
+                    stat_bonus["Wisdom"] += value
 
             event_bonus = detail.get("event_bonus", 0)
 
             skills = []
             for skill in detail.get("skills", []):
-                name = skill.get("name_en") or skill.get("name")
-                if name:
-                    skills.append(name)
+                skill_name = skill.get("name_en") or skill.get("name")
+                if skill_name:
+                    skills.append(skill_name)
 
-            name = detail.get("title_en") or detail.get("name_en")
-
-            # Support card image pattern
-            image_url = f"{CDN_BASE}/static/supports/{support_id}.png"
+            image_url = detail.get("image")
             image_path = f"data/images/support/{support_id}.png"
 
             self.download_image(image_url, image_path)
@@ -160,11 +165,8 @@ class UmaAPI:
                 "blacklisted": False
             })
 
-            if self.progress_callback and idx % 3 == 0:
-                percent = 35 + int((idx / max(total, 1)) * 60)
-                self.progress_callback(
-                    f"Fetching supports {idx}/{total}",
-                    percent
-                )
+            if self.progress_callback and i % 3 == 0:
+                percent = 40 + int((i / max(total, 1)) * 55)
+                self.progress_callback(f"Fetching supports {i}/{total}", percent)
 
         return supports
