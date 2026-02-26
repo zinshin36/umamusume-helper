@@ -1,18 +1,15 @@
 import json
 import os
 
-DATA_FOLDER = "data"
-DATA_FILE = os.path.join(DATA_FOLDER, "data.json")
+DATA_FILE = "data/data.json"
 
 
 class DataManager:
 
     def save(self, horses, supports):
 
-        os.makedirs("data/images/support", exist_ok=True)
         os.makedirs("data/images/horse", exist_ok=True)
-
-        os.makedirs(DATA_FOLDER, exist_ok=True)
+        os.makedirs("data/images/support", exist_ok=True)
 
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             json.dump({
