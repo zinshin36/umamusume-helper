@@ -11,9 +11,6 @@ logger = logging.getLogger(__name__)
 
 class UmaAPI:
 
-    def __init__(self, progress_callback=None):
-        self.progress_callback = progress_callback
-
     def fetch_json(self, url):
         r = requests.get(url, timeout=30)
         r.raise_for_status()
@@ -22,6 +19,7 @@ class UmaAPI:
 
     def download_image(self, url, save_path):
         if not url:
+            logger.error(f"No image URL provided for {save_path}")
             return
 
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -34,29 +32,32 @@ class UmaAPI:
         except Exception as e:
             logger.error(f"Image download failed: {url} | {e}")
 
-    # ================= HORSES (GAMEPLAY DATA) =================
+    # ================= HORSES =================
 
     def fetch_all_horses(self):
 
-        horse_list = self.fetch_json(f"{BASE}/uma")
+        characters = self.fetch_json(f"{BASE}/character")
         horses = []
 
-        for i, horse in enumerate(horse_list):
+        for char in characters:
 
-            game_id = horse.get("id")
-            name = horse.get("name_en")
+            game_id = char.get("game_id")
+            name = char.get("name_en")
+
+            # fetch gameplay stats
+            stats = self.fetch_json(f"{BASE}/character/{game_id}/stats")
 
             growth = {
-                "Speed": horse.get("speed_growth", 0),
-                "Stamina": horse.get("stamina_growth", 0),
-                "Power": horse.get("power_growth", 0),
-                "Guts": horse.get("guts_growth", 0),
-                "Wisdom": horse.get("wiz_growth", 0)
+                "Speed": stats.get("speed_growth", 0),
+                "Stamina": stats.get("stamina_growth", 0),
+                "Power": stats.get("power_growth", 0),
+                "Guts": stats.get("guts_growth", 0),
+                "Wisdom": stats.get("wiz_growth", 0)
             }
 
-            running_style = horse.get("strategy")
+            strategy = stats.get("strategy", "Unknown")
 
-            image_url = horse.get("image")
+            image_url = char.get("detail_img_pc") or char.get("thumb_img")
             image_path = f"data/images/horse/{game_id}.png"
 
             self.download_image(image_url, image_path)
@@ -65,36 +66,38 @@ class UmaAPI:
                 "id": game_id,
                 "name": name,
                 "growth": growth,
-                "strategy": running_style,
+                "strategy": strategy,
                 "image": image_path
             })
 
         return horses
 
-    # ================= SUPPORT CARDS (GAMEPLAY DATA) =================
+    # ================= SUPPORTS =================
 
     def fetch_all_supports(self):
 
-        support_list = self.fetch_json(f"{BASE}/supportcard")
+        support_list = self.fetch_json(f"{BASE}/support")
         supports = []
 
         for support in support_list:
 
             support_id = support.get("id")
-            name = support.get("name_en")
-
-            stat_bonus = {
-                "Speed": support.get("speed_bonus", 0),
-                "Stamina": support.get("stamina_bonus", 0),
-                "Power": support.get("power_bonus", 0),
-                "Guts": support.get("guts_bonus", 0),
-                "Wisdom": support.get("wiz_bonus", 0)
-            }
-
+            name = support.get("title_en")
             rarity = support.get("rarity_string")
             support_type = support.get("type")
 
-            image_url = support.get("image")
+            # fetch gameplay stats
+            stats = self.fetch_json(f"{BASE}/support/{support_id}/stats")
+
+            stat_bonus = {
+                "Speed": stats.get("speed_bonus", 0),
+                "Stamina": stats.get("stamina_bonus", 0),
+                "Power": stats.get("power_bonus", 0),
+                "Guts": stats.get("guts_bonus", 0),
+                "Wisdom": stats.get("wiz_bonus", 0)
+            }
+
+            image_url = stats.get("image") or support.get("type_icon_url")
             image_path = f"data/images/support/{support_id}.png"
 
             self.download_image(image_url, image_path)
