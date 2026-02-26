@@ -6,10 +6,9 @@ import os
 BASE = "https://umapyoi.net/api/v1"
 IMAGE_BASE = "https://umapyoi.net"
 
-REQUEST_DELAY = 0.12  # rate-limit safe
+REQUEST_DELAY = 0.12
 
 logger = logging.getLogger(__name__)
-
 
 RARITY_MAP = {
     3: "SSR",
@@ -30,6 +29,23 @@ class UmaAPI:
         r.raise_for_status()
         time.sleep(REQUEST_DELAY)
         return r.json()
+
+    # ================= NORMALIZE RESPONSE =================
+
+    def normalize_list_response(self, data):
+        """
+        Handles:
+        - Raw list
+        - Paginated dict with 'results'
+        """
+        if isinstance(data, list):
+            return data
+
+        if isinstance(data, dict):
+            if "results" in data:
+                return data["results"]
+
+        raise RuntimeError("Unexpected API response structure")
 
     # ================= IMAGE =================
 
@@ -55,10 +71,10 @@ class UmaAPI:
 
     def fetch_all_horses(self):
 
-        data = self.fetch_json(f"{BASE}/character")
+        raw = self.fetch_json(f"{BASE}/character")
+        data = self.normalize_list_response(raw)
 
         horses = []
-
         total = len(data)
 
         for idx, entry in enumerate(data):
@@ -69,38 +85,35 @@ class UmaAPI:
             if not char_id or not name:
                 continue
 
-            # Pull growth stats if available
-            speed_growth = entry.get("speed_growth", 0)
-            stamina_growth = entry.get("stamina_growth", 0)
-            power_growth = entry.get("power_growth", 0)
-            guts_growth = entry.get("guts_growth", 0)
-            wisdom_growth = entry.get("wisdom_growth", 0)
-
             horses.append({
                 "id": char_id,
                 "name": name,
                 "growth": {
-                    "Speed": speed_growth,
-                    "Stamina": stamina_growth,
-                    "Power": power_growth,
-                    "Guts": guts_growth,
-                    "Wisdom": wisdom_growth
+                    "Speed": entry.get("speed_growth", 0),
+                    "Stamina": entry.get("stamina_growth", 0),
+                    "Power": entry.get("power_growth", 0),
+                    "Guts": entry.get("guts_growth", 0),
+                    "Wisdom": entry.get("wisdom_growth", 0)
                 }
             })
 
             if self.progress_callback and idx % 5 == 0:
-                percent = 5 + int((idx / total) * 20)
+                percent = 5 + int((idx / max(total, 1)) * 20)
                 self.progress_callback(
                     f"Fetching horses {idx}/{total}",
                     percent
                 )
+
+        if not horses:
+            raise RuntimeError("Character endpoint returned no valid horses")
 
         return horses
 
     # ================= SUPPORT LIST =================
 
     def fetch_support_list(self):
-        return self.fetch_json(f"{BASE}/support")
+        raw = self.fetch_json(f"{BASE}/support")
+        return self.normalize_list_response(raw)
 
     # ================= SUPPORT DETAIL =================
 
@@ -129,9 +142,6 @@ class UmaAPI:
 
             support_type = detail.get("support_type", "Speed")
 
-            event_bonus = detail.get("event_bonus", 0)
-
-            # Stat bonuses
             stat_bonus = {
                 "Speed": detail.get("speed_bonus", 0),
                 "Stamina": detail.get("stamina_bonus", 0),
@@ -139,6 +149,8 @@ class UmaAPI:
                 "Guts": detail.get("guts_bonus", 0),
                 "Wisdom": detail.get("wisdom_bonus", 0)
             }
+
+            event_bonus = detail.get("event_bonus", 0)
 
             skills = []
             for skill in detail.get("skills", []):
@@ -169,7 +181,7 @@ class UmaAPI:
             })
 
             if self.progress_callback and idx % 3 == 0:
-                percent = 30 + int((idx / total) * 65)
+                percent = 30 + int((idx / max(total, 1)) * 65)
                 self.progress_callback(
                     f"Fetching supports {idx}/{total}",
                     percent
