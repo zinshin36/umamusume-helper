@@ -30,23 +30,6 @@ class UmaAPI:
         time.sleep(REQUEST_DELAY)
         return r.json()
 
-    # ================= NORMALIZE RESPONSE =================
-
-    def normalize_list_response(self, data):
-        """
-        Handles:
-        - Raw list
-        - Paginated dict with 'results'
-        """
-        if isinstance(data, list):
-            return data
-
-        if isinstance(data, dict):
-            if "results" in data:
-                return data["results"]
-
-        raise RuntimeError("Unexpected API response structure")
-
     # ================= IMAGE =================
 
     def download_image(self, url, save_path):
@@ -71,60 +54,50 @@ class UmaAPI:
 
     def fetch_all_horses(self):
 
-        raw = self.fetch_json(f"{BASE}/character")
-        data = self.normalize_list_response(raw)
+        id_list = self.fetch_json(f"{BASE}/character")
 
         horses = []
-        total = len(data)
+        total = len(id_list)
 
-        for idx, entry in enumerate(data):
+        for idx, entry in enumerate(id_list):
 
-            char_id = entry.get("id")
-            name = entry.get("name_en") or entry.get("name")
+            game_id = entry.get("game_id")
+            if not game_id:
+                continue
 
-            if not char_id or not name:
+            detail = self.fetch_json(f"{BASE}/character/{game_id}")
+
+            name = detail.get("name_en") or detail.get("name")
+
+            if not name:
                 continue
 
             horses.append({
-                "id": char_id,
+                "id": game_id,
                 "name": name,
                 "growth": {
-                    "Speed": entry.get("speed_growth", 0),
-                    "Stamina": entry.get("stamina_growth", 0),
-                    "Power": entry.get("power_growth", 0),
-                    "Guts": entry.get("guts_growth", 0),
-                    "Wisdom": entry.get("wisdom_growth", 0)
+                    "Speed": detail.get("speed_growth", 0),
+                    "Stamina": detail.get("stamina_growth", 0),
+                    "Power": detail.get("power_growth", 0),
+                    "Guts": detail.get("guts_growth", 0),
+                    "Wisdom": detail.get("wisdom_growth", 0)
                 }
             })
 
-            if self.progress_callback and idx % 5 == 0:
-                percent = 5 + int((idx / max(total, 1)) * 20)
+            if self.progress_callback and idx % 3 == 0:
+                percent = 5 + int((idx / max(total, 1)) * 25)
                 self.progress_callback(
                     f"Fetching horses {idx}/{total}",
                     percent
                 )
 
-        if not horses:
-            raise RuntimeError("Character endpoint returned no valid horses")
-
         return horses
 
-    # ================= SUPPORT LIST =================
-
-    def fetch_support_list(self):
-        raw = self.fetch_json(f"{BASE}/support")
-        return self.normalize_list_response(raw)
-
-    # ================= SUPPORT DETAIL =================
-
-    def fetch_support_detail(self, support_id):
-        return self.fetch_json(f"{BASE}/support/{support_id}")
-
-    # ================= FULL SUPPORT BUILD =================
+    # ================= SUPPORTS =================
 
     def fetch_all_supports(self):
 
-        support_list = self.fetch_support_list()
+        support_list = self.fetch_json(f"{BASE}/support")
         total = len(support_list)
 
         supports = []
@@ -135,7 +108,7 @@ class UmaAPI:
             if not support_id:
                 continue
 
-            detail = self.fetch_support_detail(support_id)
+            detail = self.fetch_json(f"{BASE}/support/{support_id}")
 
             rarity_num = detail.get("rarity", 1)
             rarity = RARITY_MAP.get(rarity_num, "R")
@@ -181,7 +154,7 @@ class UmaAPI:
             })
 
             if self.progress_callback and idx % 3 == 0:
-                percent = 30 + int((idx / max(total, 1)) * 65)
+                percent = 35 + int((idx / max(total, 1)) * 60)
                 self.progress_callback(
                     f"Fetching supports {idx}/{total}",
                     percent
