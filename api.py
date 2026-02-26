@@ -4,7 +4,7 @@ import time
 import os
 
 BASE = "https://umapyoi.net/api/v1"
-IMAGE_BASE = "https://umapyoi.net"
+CDN_BASE = "https://umapyoi.net"
 
 REQUEST_DELAY = 0.12
 
@@ -30,7 +30,7 @@ class UmaAPI:
         time.sleep(REQUEST_DELAY)
         return r.json()
 
-    # ================= IMAGE =================
+    # ================= IMAGE DOWNLOAD =================
 
     def download_image(self, url, save_path):
 
@@ -69,19 +69,27 @@ class UmaAPI:
 
             name = detail.get("name_en") or detail.get("name")
 
-            if not name:
-                continue
+            # Growth stats are inside "status"
+            status = detail.get("status", {})
+
+            growth = {
+                "Speed": status.get("speed_growth", 0),
+                "Stamina": status.get("stamina_growth", 0),
+                "Power": status.get("power_growth", 0),
+                "Guts": status.get("guts_growth", 0),
+                "Wisdom": status.get("wisdom_growth", 0)
+            }
+
+            # Optional horse image
+            image_path = f"data/images/horse/{game_id}.png"
+            image_url = f"{CDN_BASE}/static/characters/{game_id}.png"
+            self.download_image(image_url, image_path)
 
             horses.append({
                 "id": game_id,
                 "name": name,
-                "growth": {
-                    "Speed": detail.get("speed_growth", 0),
-                    "Stamina": detail.get("stamina_growth", 0),
-                    "Power": detail.get("power_growth", 0),
-                    "Guts": detail.get("guts_growth", 0),
-                    "Wisdom": detail.get("wisdom_growth", 0)
-                }
+                "growth": growth,
+                "image": image_path
             })
 
             if self.progress_callback and idx % 3 == 0:
@@ -110,17 +118,18 @@ class UmaAPI:
 
             detail = self.fetch_json(f"{BASE}/support/{support_id}")
 
-            rarity_num = detail.get("rarity", 1)
-            rarity = RARITY_MAP.get(rarity_num, "R")
+            rarity = RARITY_MAP.get(detail.get("rarity", 1), "R")
+            support_type = detail.get("type", "Speed")
 
-            support_type = detail.get("support_type", "Speed")
+            # Stat bonuses inside training_bonus
+            training_bonus = detail.get("training_bonus", {})
 
             stat_bonus = {
-                "Speed": detail.get("speed_bonus", 0),
-                "Stamina": detail.get("stamina_bonus", 0),
-                "Power": detail.get("power_bonus", 0),
-                "Guts": detail.get("guts_bonus", 0),
-                "Wisdom": detail.get("wisdom_bonus", 0)
+                "Speed": training_bonus.get("speed", 0),
+                "Stamina": training_bonus.get("stamina", 0),
+                "Power": training_bonus.get("power", 0),
+                "Guts": training_bonus.get("guts", 0),
+                "Wisdom": training_bonus.get("wisdom", 0)
             }
 
             event_bonus = detail.get("event_bonus", 0)
@@ -133,10 +142,8 @@ class UmaAPI:
 
             name = detail.get("title_en") or detail.get("name_en")
 
-            image_url = detail.get("image")
-            if image_url:
-                image_url = IMAGE_BASE + image_url
-
+            # Support card image pattern
+            image_url = f"{CDN_BASE}/static/supports/{support_id}.png"
             image_path = f"data/images/support/{support_id}.png"
 
             self.download_image(image_url, image_path)
