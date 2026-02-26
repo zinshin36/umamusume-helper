@@ -1,41 +1,57 @@
 import random
-from collections import defaultdict
-
-
-RARITY_MULT = {
-    "SSR": 1.0,
-    "SR": 0.8,
-    "R": 0.5
-}
 
 
 class DeckOptimizer:
 
-    def __init__(self, supports, horse, scenario):
-        self.supports = [s for s in supports if not s.get("blacklisted", False)]
-        self.horse = horse
-        self.scenario = scenario
+    def __init__(self):
+        pass
 
-    def score_support(self, support):
+    def score_support(self, horse, support):
 
-        rarity_score = RARITY_MULT.get(support["rarity"], 0.4)
+        score = 0
 
-        total_stat_value = 0
+        growth = horse.get("growth", {})
+        support_bonus = support.get("stat_bonus", {})
 
-        for stat, value in support.get("stat_bonus", {}).items():
-            growth = self.horse["growth"].get(stat, 0)
-            total_stat_value += value * (1 + growth * 0.01)
+        # Score based on matching growth
+        for stat in ["Speed", "Stamina", "Power", "Guts", "Wisdom"]:
+            growth_value = growth.get(stat, 0)
+            bonus_value = support_bonus.get(stat, 0)
 
-        event_bonus = support.get("event_bonus", 0)
+            score += growth_value * bonus_value
 
-        return rarity_score * (total_stat_value + event_bonus)
+        # Slight bonus for matching type to highest growth stat
+        highest_growth_stat = max(growth, key=growth.get)
+        if support.get("type") == highest_growth_stat:
+            score += 50
 
-    def build_best_deck(self):
+        # Small rarity bonus
+        rarity_bonus = {
+            "SSR": 100,
+            "SR": 50,
+            "R": 10
+        }
+        score += rarity_bonus.get(support.get("rarity"), 0)
 
-        if not self.supports:
+        return score
+
+    def optimize(self, horse, supports):
+
+        if not supports:
             return []
 
-        scored = [(s, self.score_support(s)) for s in self.supports]
-        scored.sort(key=lambda x: x[1], reverse=True)
+        scored = []
 
-        return [s[0] for s in scored[:6]]
+        for support in supports:
+            if support.get("blacklisted"):
+                continue
+
+            score = self.score_support(horse, support)
+            scored.append((score, support))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+
+        # Return top 6 cards
+        best = [s[1] for s in scored[:6]]
+
+        return best
