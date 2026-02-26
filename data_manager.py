@@ -3,7 +3,6 @@ import os
 
 DATA_FILE = "data/data.json"
 
-
 class DataManager:
 
     def save(self, horses, supports):
